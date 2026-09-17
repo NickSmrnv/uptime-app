@@ -12,9 +12,18 @@ import (
 
 type memoryMonitors struct{ monitors []model.Monitor }
 
-func (m *memoryMonitors) Create(_ context.Context, monitor *model.Monitor) error {
+func (m *memoryMonitors) CreateIfBelowLimit(_ context.Context, monitor *model.Monitor, limit int) (bool, error) {
+	count := 0
+	for _, existing := range m.monitors {
+		if existing.UserID == monitor.UserID {
+			count++
+		}
+	}
+	if count >= limit {
+		return false, nil
+	}
 	m.monitors = append(m.monitors, *monitor)
-	return nil
+	return true, nil
 }
 
 func (m *memoryMonitors) ListByUserID(_ context.Context, userID uuid.UUID) ([]model.Monitor, error) {
@@ -54,12 +63,28 @@ func TestCreateMonitorRejectsInvalidURLAndInterval(t *testing.T) {
 	for _, input := range []MonitorInput{
 		{URL: "example.com", IntervalSeconds: 60},
 		{URL: "ftp://example.com", IntervalSeconds: 60},
+		{URL: "http://localhost", IntervalSeconds: 60},
+		{URL: "http://127.0.0.1", IntervalSeconds: 60},
+		{URL: "http://169.254.169.254", IntervalSeconds: 60},
+		{URL: "http://[::1]", IntervalSeconds: 60},
 		{URL: "https://example.com", IntervalSeconds: 4},
 		{URL: "https://example.com", IntervalSeconds: maxMonitorIntervalSeconds + 1},
 	} {
 		if _, err := svc.Create(context.Background(), "access", input); !errors.Is(err, ErrInvalidInput) {
 			t.Fatalf("input %#v: error = %v", input, err)
 		}
+	}
+}
+
+func TestCreateMonitorEnforcesUserLimit(t *testing.T) {
+	userID := uuid.New()
+	store := &memoryMonitors{}
+	for range maxMonitorsPerUser {
+		store.monitors = append(store.monitors, model.Monitor{UserID: userID})
+	}
+	svc := NewMonitorService(store, fakeTokenVerifier{userID: userID})
+	if _, err := svc.Create(context.Background(), "access", MonitorInput{URL: "https://example.com", IntervalSeconds: 60}); !errors.Is(err, ErrMonitorLimitReached) {
+		t.Fatalf("create error = %v", err)
 	}
 }
 

@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import DashboardPage from "./page";
-import type { User } from "../../lib/api";
+import { ApiError, type Monitor, type User } from "../../lib/api";
 
 const replace = vi.fn();
 const logout = vi.fn();
@@ -53,6 +53,43 @@ describe("DashboardPage", () => {
     await waitFor(() => expect(apiFetch).toHaveBeenCalledWith("/monitors", { method: "POST", body: JSON.stringify({ url: "https://example.com", intervalSeconds: 300 }) }));
     expect(await screen.findByText("https://example.com")).toBeInTheDocument();
     expect(screen.getByText("Каждые 5 мин.")).toBeInTheDocument();
+  });
+
+  it("keeps a created monitor when the initial list resolves late", async () => {
+    let resolveInitialList: (monitors: Monitor[]) => void;
+    const initialList = new Promise<Monitor[]>((resolve) => {
+      resolveInitialList = resolve;
+    });
+    apiFetch.mockImplementationOnce(() => initialList).mockResolvedValueOnce({ id: "monitor-1", url: "https://example.com", intervalSeconds: 60, createdAt: "2026-09-17T10:00:00Z" });
+    render(<DashboardPage />);
+
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledWith("/monitors"));
+    fireEvent.click(screen.getByRole("button", { name: "Добавить сайт" }));
+    fireEvent.change(screen.getByLabelText("Адрес сайта"), { target: { value: "https://example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "Создать" }));
+
+    expect(await screen.findByText("https://example.com")).toBeInTheDocument();
+    resolveInitialList!([]);
+    await waitFor(() => expect(screen.getByText("https://example.com")).toBeInTheDocument());
+  });
+
+  it("shows a monitor limit error returned by the API", async () => {
+    apiFetch.mockResolvedValueOnce([]).mockRejectedValueOnce(new ApiError(422, "monitor limit reached"));
+    render(<DashboardPage />);
+
+    await screen.findByText("Мониторов пока нет");
+    fireEvent.click(screen.getByRole("button", { name: "Добавить сайт" }));
+    fireEvent.change(screen.getByLabelText("Адрес сайта"), { target: { value: "https://example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "Создать" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Достигнут лимит точек мониторинга для аккаунта.");
+  });
+
+  it("shows a loading error from the protected API", async () => {
+    apiFetch.mockRejectedValueOnce(new Error("network error"));
+    render(<DashboardPage />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Не удалось загрузить точки мониторинга. Обновите страницу и попробуйте снова.");
   });
 
   it("shows the authenticated user in the dashboard layout", async () => {

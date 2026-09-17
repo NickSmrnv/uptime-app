@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../auth/AuthProvider";
 import { ApiError, avatarSource, type Monitor } from "../../lib/api";
@@ -8,7 +8,7 @@ import { ApiError, avatarSource, type Monitor } from "../../lib/api";
 const navigationItems = [
   { label: "Обзор", current: true, href: "/dashboard", unavailable: false },
   { label: "Профиль", current: false, href: "/profile", unavailable: false },
-  { label: "Мониторы", current: false, href: "#", unavailable: true },
+  { label: "Мониторы", current: false, href: "#monitors", unavailable: false },
   { label: "Инциденты", current: false, href: "#", unavailable: true },
 ];
 
@@ -17,6 +17,9 @@ const intervalMultipliers = {
   minutes: 60,
   hours: 60 * 60,
 } as const;
+
+const minMonitorIntervalSeconds = 5;
+const maxMonitorIntervalSeconds = 7 * 24 * 60 * 60;
 
 type IntervalUnit = keyof typeof intervalMultipliers;
 
@@ -45,6 +48,7 @@ export default function DashboardPage() {
   const [intervalUnit, setIntervalUnit] = useState<IntervalUnit>("minutes");
   const [createError, setCreateError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const monitorRequestVersion = useRef(0);
 
   useEffect(() => {
     if (status === "anonymous") {
@@ -56,13 +60,27 @@ export default function DashboardPage() {
     if (status !== "authenticated") {
       return;
     }
+    const requestVersion = ++monitorRequestVersion.current;
+    let isActive = true;
     void apiFetch<Monitor[]>("/monitors")
       .then((loadedMonitors) => {
+        if (!isActive || requestVersion !== monitorRequestVersion.current) return;
         setMonitors(loadedMonitors);
         setLoadError(null);
       })
-      .catch(() => setLoadError("Не удалось загрузить точки мониторинга. Обновите страницу и попробуйте снова."))
-      .finally(() => setIsLoadingMonitors(false));
+      .catch(() => {
+        if (isActive && requestVersion === monitorRequestVersion.current) {
+          setLoadError("Не удалось загрузить точки мониторинга. Обновите страницу и попробуйте снова.");
+        }
+      })
+      .finally(() => {
+        if (isActive && requestVersion === monitorRequestVersion.current) {
+          setIsLoadingMonitors(false);
+        }
+      });
+    return () => {
+      isActive = false;
+    };
   }, [apiFetch, status]);
 
   const handleLogout = async () => {
@@ -89,7 +107,7 @@ export default function DashboardPage() {
 
     try {
       const parsedURL = new URL(trimmedURL);
-      if ((parsedURL.protocol !== "http:" && parsedURL.protocol !== "https:") || !Number.isInteger(interval) || interval < 5 || interval > 604800) {
+      if ((parsedURL.protocol !== "http:" && parsedURL.protocol !== "https:") || !Number.isInteger(interval) || interval < minMonitorIntervalSeconds || interval > maxMonitorIntervalSeconds) {
         throw new Error("invalid input");
       }
     } catch {
@@ -103,13 +121,15 @@ export default function DashboardPage() {
         method: "POST",
         body: JSON.stringify({ url: trimmedURL, intervalSeconds: interval }),
       });
+      monitorRequestVersion.current += 1;
+      setIsLoadingMonitors(false);
       setMonitors((current) => [monitor, ...current]);
       setURL("");
       setIntervalValue("1");
       setIntervalUnit("minutes");
       setIsCreateFormOpen(false);
     } catch (error) {
-      setCreateError(error instanceof ApiError && error.status === 400 ? "Проверьте адрес сайта и интервал." : "Не удалось создать точку мониторинга. Повторите попытку.");
+      setCreateError(error instanceof ApiError && error.status === 400 ? "Проверьте адрес сайта и интервал." : error instanceof ApiError && error.status === 422 ? "Достигнут лимит точек мониторинга для аккаунта." : "Не удалось создать точку мониторинга. Повторите попытку.");
     } finally {
       setIsCreating(false);
     }
@@ -198,7 +218,7 @@ export default function DashboardPage() {
               <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">Добро пожаловать, {user.email.split("@")[0]}</h1>
               <p className="mt-3 max-w-2xl text-slate-600">Здесь будут отображаться ваши проверки доступности и состояние сервисов.</p>
 
-              <section className="mt-8" aria-labelledby="monitors-heading">
+              <section className="mt-8" id="monitors" aria-labelledby="monitors-heading">
                 <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-center">
                   <div>
                     <h2 className="text-xl font-semibold" id="monitors-heading">Точки мониторинга</h2>
@@ -225,7 +245,7 @@ export default function DashboardPage() {
                       </label>
                       <label className="block text-sm font-medium text-slate-800" htmlFor="monitor-interval">
                         Интервал
-                        <input className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none ring-blue-600 focus:ring-2 sm:w-28" id="monitor-interval" min={intervalUnit === "seconds" ? 5 : 1} name="interval" onChange={(event) => setIntervalValue(event.target.value)} required step="1" type="number" value={intervalValue} />
+                        <input className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none ring-blue-600 focus:ring-2 sm:w-28" id="monitor-interval" min={intervalUnit === "seconds" ? minMonitorIntervalSeconds : 1} name="interval" onChange={(event) => setIntervalValue(event.target.value)} required step="1" type="number" value={intervalValue} />
                       </label>
                       <label className="block text-sm font-medium text-slate-800" htmlFor="monitor-interval-unit">
                         Единица

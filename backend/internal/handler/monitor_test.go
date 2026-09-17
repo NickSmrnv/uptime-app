@@ -77,4 +77,12 @@ func TestMonitorRoutesRejectInvalidBodyAndUnauthorizedRequests(t *testing.T) {
 	if recorder.Code != http.StatusUnauthorized {
 		t.Fatalf("unauthorized status = %d", recorder.Code)
 	}
+
+	monitorService.err = service.ErrMonitorLimitReached
+	limited := httptest.NewRequest(http.MethodPost, "/monitors", strings.NewReader(`{"url":"https://example.com","intervalSeconds":60}`))
+	recorder = httptest.NewRecorder()
+	mux.ServeHTTP(recorder, limited)
+	if recorder.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("limit status = %d", recorder.Code)
+	}
 }

@@ -77,6 +77,8 @@ func (h *MonitorHandler) writeMonitorError(w http.ResponseWriter, err error) boo
 		writeError(w, http.StatusBadRequest, "invalid monitor")
 	case errors.Is(err, service.ErrUnauthorized):
 		writeError(w, http.StatusUnauthorized, "unauthorized")
+	case errors.Is(err, service.ErrMonitorLimitReached):
+		writeError(w, http.StatusUnprocessableEntity, "monitor limit reached")
 	default:
 		writeError(w, http.StatusInternalServerError, "internal server error")
 	}

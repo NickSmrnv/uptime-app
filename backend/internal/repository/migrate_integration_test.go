@@ -60,8 +60,9 @@ func TestMigratePostgreSQLAndRotateSession(t *testing.T) {
 
 	monitors := NewMonitorRepository(db)
 	monitor := &model.Monitor{ID: uuid.New(), UserID: user.ID, URL: "https://example.com", IntervalSeconds: 60, CreatedAt: now, UpdatedAt: now}
-	if err := monitors.Create(context.Background(), monitor); err != nil {
-		t.Fatal(err)
+	created, err := monitors.CreateIfBelowLimit(context.Background(), monitor, 100)
+	if err != nil || !created {
+		t.Fatalf("create monitor: created=%t, err=%v", created, err)
 	}
 	listed, err := monitors.ListByUserID(context.Background(), user.ID)
 	if err != nil || len(listed) != 1 || listed[0].URL != monitor.URL {

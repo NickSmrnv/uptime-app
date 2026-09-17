@@ -3,21 +3,26 @@ package service
 import (
 	"context"
 	"errors"
+	"net/netip"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/uptime-app/backend/internal/model"
+	"github.com/uptime-app/backend/internal/repository"
 )
+
+var ErrMonitorLimitReached = errors.New("monitor limit reached")
 
 const (
 	minMonitorIntervalSeconds = 5
 	maxMonitorIntervalSeconds = 7 * 24 * 60 * 60
+	maxMonitorsPerUser        = 100
 )
 
 type MonitorStore interface {
-	Create(context.Context, *model.Monitor) error
+	CreateIfBelowLimit(context.Context, *model.Monitor, int) (bool, error)
 	ListByUserID(context.Context, uuid.UUID) ([]model.Monitor, error)
 }
 
@@ -58,8 +63,15 @@ func (s *MonitorService) Create(ctx context.Context, accessToken string, input M
 		CreatedAt:       now,
 		UpdatedAt:       now,
 	}
-	if err := s.monitors.Create(ctx, &monitor); err != nil {
+	created, err := s.monitors.CreateIfBelowLimit(ctx, &monitor, maxMonitorsPerUser)
+	if err != nil {
+		if errors.Is(err, repository.ErrUserNotFound) {
+			return model.Monitor{}, ErrUnauthorized
+		}
 		return model.Monitor{}, err
+	}
+	if !created {
+		return model.Monitor{}, ErrMonitorLimitReached
 	}
 	return monitor, nil
 }
@@ -78,8 +90,22 @@ func normalizeMonitorURL(value string) (string, error) {
 		return "", errors.New("invalid monitor URL")
 	}
 	parsed, err := url.ParseRequestURI(value)
-	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.Hostname() == "" || parsed.User != nil {
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.Hostname() == "" || parsed.User != nil || isBlockedMonitorHost(parsed.Hostname()) {
 		return "", errors.New("invalid monitor URL")
 	}
 	return parsed.String(), nil
+}
+
+func isBlockedMonitorHost(host string) bool {
+	// A future monitor executor must repeat this check after resolving DNS and
+	// before every redirect, since this validation only sees the submitted URL.
+	host = strings.ToLower(host)
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") || strings.Contains(host, "%") {
+		return true
+	}
+	address, err := netip.ParseAddr(host)
+	if err != nil {
+		return false
+	}
+	return address.IsLoopback() || address.IsPrivate() || address.IsLinkLocalUnicast() || address.IsLinkLocalMulticast() || address.IsMulticast() || address.IsUnspecified()
 }
