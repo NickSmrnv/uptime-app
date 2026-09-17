@@ -37,12 +37,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshInFlight = useRef<Promise<AuthResponse | null> | null>(null);
 
   const applySession = useCallback((session: AuthResponse) => {
+    api.setAccessToken(session.accessToken);
     setAccessToken(session.accessToken);
     setUser(session.user);
     setStatus("authenticated");
   }, []);
 
   const clearSession = useCallback(() => {
+    api.setAccessToken(null);
     setAccessToken(null);
     setUser(null);
     setStatus("anonymous");
@@ -110,7 +112,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       try {
-        return await api.authorized<T>(path, accessToken, init);
+        return await api.request<T>(path, init);
       } catch (error) {
         if (!(error instanceof ApiError) || error.status !== 401) {
           throw error;
@@ -121,7 +123,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           throw error;
         }
 
-        return api.authorized<T>(path, session.accessToken, init);
+        return api.request<T>(path, init);
       }
     },
     [accessToken, refresh],
@@ -137,44 +139,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [apiFetch]);
 
   const uploadAvatar = useCallback(async (file: File) => {
-    if (!accessToken) {
-      throw new Error("The user is not authenticated");
-    }
-    try {
-      const updatedUser = await api.uploadAvatar(accessToken, file);
-      setUser(updatedUser);
-      return updatedUser;
-    } catch (error) {
-      if (!(error instanceof ApiError) || error.status !== 401) {
-        throw error;
-      }
-      const session = await refresh();
-      if (!session) {
-        throw error;
-      }
-      const updatedUser = await api.uploadAvatar(session.accessToken, file);
-      setUser(updatedUser);
-      return updatedUser;
-    }
-  }, [accessToken, refresh]);
+    const formData = new FormData();
+    formData.append("avatar", file);
+    const updatedUser = await apiFetch<User>("/users/me/avatar", { method: "PUT", body: formData });
+    setUser(updatedUser);
+    return updatedUser;
+  }, [apiFetch]);
 
   const uploadFile = useCallback(async (file: File) => {
-    if (!accessToken) {
-      throw new Error("The user is not authenticated");
-    }
-    try {
-      return await api.uploadFile(accessToken, file);
-    } catch (error) {
-      if (!(error instanceof ApiError) || error.status !== 401) {
-        throw error;
-      }
-      const session = await refresh();
-      if (!session) {
-        throw error;
-      }
-      return api.uploadFile(session.accessToken, file);
-    }
-  }, [accessToken, refresh]);
+    const formData = new FormData();
+    formData.append("file", file);
+    return apiFetch<UploadedFile>("/uploads", { method: "POST", body: formData });
+  }, [apiFetch]);
 
   const value = useMemo(
     () => ({ status, user, accessToken, register, login, refresh, logout, updateProfile, uploadAvatar, uploadFile, apiFetch }),
