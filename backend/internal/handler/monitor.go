@@ -27,34 +27,56 @@ func (h *MonitorHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /monitors", h.create)
 }
 
-type createMonitorRequest struct {
-	URL             string `json:"url"`
-	IntervalSeconds int    `json:"intervalSeconds"`
+type CreateMonitorRequest struct {
+	URL             string `json:"url" example:"https://example.com/health"`
+	IntervalSeconds int    `json:"intervalSeconds" example:"300"`
 }
 
-type monitorResponse struct {
+type MonitorResponse struct {
 	ID              string    `json:"id"`
 	URL             string    `json:"url"`
 	IntervalSeconds int       `json:"intervalSeconds"`
 	CreatedAt       time.Time `json:"createdAt"`
 }
 
+// list returns all monitors owned by the authenticated user.
+// @Summary List monitors
+// @Tags monitors
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {array} MonitorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /monitors [get]
 func (h *MonitorHandler) list(w http.ResponseWriter, r *http.Request) {
 	monitors, err := h.monitors.List(r.Context(), accessToken(r))
 	if !h.writeMonitorError(w, err) {
 		return
 	}
-	responses := make([]monitorResponse, 0, len(monitors))
+	responses := make([]MonitorResponse, 0, len(monitors))
 	for _, monitor := range monitors {
 		responses = append(responses, monitorFrom(monitor))
 	}
 	writeJSON(w, http.StatusOK, responses)
 }
 
+// create validates and persists one monitor for the authenticated user.
+// @Summary Create a monitor
+// @Tags monitors
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body CreateMonitorRequest true "Monitor configuration"
+// @Success 201 {object} MonitorResponse
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 422 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /monitors [post]
 func (h *MonitorHandler) create(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	defer r.Body.Close()
-	var request createMonitorRequest
+	var request CreateMonitorRequest
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&request); err != nil {
@@ -85,6 +107,6 @@ func (h *MonitorHandler) writeMonitorError(w http.ResponseWriter, err error) boo
 	return false
 }
 
-func monitorFrom(monitor model.Monitor) monitorResponse {
-	return monitorResponse{ID: monitor.ID.String(), URL: monitor.URL, IntervalSeconds: monitor.IntervalSeconds, CreatedAt: monitor.CreatedAt}
+func monitorFrom(monitor model.Monitor) MonitorResponse {
+	return MonitorResponse{ID: monitor.ID.String(), URL: monitor.URL, IntervalSeconds: monitor.IntervalSeconds, CreatedAt: monitor.CreatedAt}
 }

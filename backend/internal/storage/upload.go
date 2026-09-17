@@ -91,6 +91,14 @@ func (s *UploadStorage) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
+// ServeHTTP forces non-avatar files to download and marks them nosniff to avoid executing arbitrary uploads inline.
+// @Summary Download an uploaded file
+// @Tags uploads
+// @Param category path string true "Storage category, such as avatars or files"
+// @Param filename path string true "UUID filename with its extension"
+// @Success 200 {file} file
+// @Failure 404
+// @Router /uploads/{category}/{filename} [get]
 func (s *UploadStorage) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	key := strings.TrimPrefix(r.URL.Path, "/uploads/")
 	if !validUploadKey(key) {

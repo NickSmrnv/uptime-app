@@ -32,6 +32,20 @@ func (h *UploadHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /uploads", h.upload)
 }
 
+// upload authenticates first, then bounds and reads one multipart file before delegating storage.
+// This order avoids processing untrusted file data for unauthorized requests.
+// @Summary Upload a file
+// @Tags uploads
+// @Accept mpfd
+// @Produce json
+// @Security BearerAuth
+// @Param file formData file true "File up to 10 MB"
+// @Success 201 {object} service.UploadedFile
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 413 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /uploads [post]
 func (h *UploadHandler) upload(w http.ResponseWriter, r *http.Request) {
 	if _, err := h.auth.Profile(r.Context(), accessToken(r)); err != nil {
 		writeUploadAuthError(w, err)
