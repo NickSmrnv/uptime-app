@@ -37,7 +37,6 @@ Pull requests should explain the user-facing change, list validation performed, 
 - В описании обязательно указать: пользовательский результат, ключевые технические изменения, выполненные проверки с их результатом, конфигурационные изменения, ограничения или отложенные проверки, ссылку на задачу/issue при наличии и скриншоты для визуальных frontend-изменений.
 - После создания проверить base/head, заголовок, описание и ссылку на PR через `gh pr view` или веб-интерфейс, затем сообщить пользователю URL.
 - Если отсутствуют `origin`, права на репозиторий или действующая авторизация GitHub, не выдумывать PR и не менять настройки доступа: сообщить точную причину и запросить подключение remote или повторную авторизацию.
-
 ## Validation
 
 Before review, run the checks specified by the local `AGENTS.md` for every application changed. Avoid unrelated formatting or dependency updates.
