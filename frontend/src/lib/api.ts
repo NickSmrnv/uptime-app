@@ -1,3 +1,5 @@
+import axios from "axios";
+
 export type User = {
   id: string;
   name: string;
@@ -15,6 +17,13 @@ export type UploadedFile = {
   url: string;
   filename: string;
   size: number;
+};
+
+export type Monitor = {
+  id: string;
+  url: string;
+  intervalSeconds: number;
+  createdAt: string;
 };
 
 export class ApiError extends Error {
@@ -37,6 +46,8 @@ function apiURL(path: string): string {
   return `${baseURL}${path}`;
 }
 
+const apiClient = axios.create({ withCredentials: true });
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   const isFormData = typeof FormData !== "undefined" && init.body instanceof FormData;
@@ -45,19 +56,27 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers.set("Content-Type", "application/json");
   }
 
-  const response = await fetch(apiURL(path), {
-    ...init,
-    credentials: "include",
-    headers,
+  const axiosHeaders: Record<string, string> = {};
+  headers.forEach((value, key) => {
+    axiosHeaders[key] = value;
   });
-  const payload = response.status === 204 ? null : await response.json().catch(() => null);
 
-  if (!response.ok) {
-    const message = typeof payload?.error === "string" ? payload.error : "Request failed";
-    throw new ApiError(response.status, message);
+  try {
+    const response = await apiClient.request<T>({
+      url: apiURL(path),
+      method: init.method,
+      data: init.body,
+      headers: axiosHeaders,
+      signal: init.signal ?? undefined,
+    });
+    return response.status === 204 ? undefined as T : response.data;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const message = typeof error.response?.data?.error === "string" ? error.response.data.error : "Request failed";
+      throw new ApiError(error.response?.status ?? 0, message);
+    }
+    throw error;
   }
-
-  return payload as T;
 }
 
 export function avatarSource(avatarURL: string): string {
@@ -87,38 +106,14 @@ export const api = {
   logout() {
     return request<void>("/auth/logout", { method: "POST" });
   },
-  profile(accessToken: string) {
-    return this.authorized<User>("/users/me", accessToken, { method: "GET" });
+  setAccessToken(accessToken: string | null) {
+    if (accessToken) {
+      apiClient.defaults.headers.common.Authorization = `Bearer ${accessToken}`;
+      return;
+    }
+    delete apiClient.defaults.headers.common.Authorization;
   },
-  updateProfile(accessToken: string, name: string) {
-    return this.authorized<User>("/users/me", accessToken, {
-      method: "PATCH",
-      body: JSON.stringify({ name }),
-    });
-  },
-  uploadAvatar(accessToken: string, file: File) {
-    const formData = new FormData();
-    formData.append("avatar", file);
-    return this.authorized<User>("/users/me/avatar", accessToken, {
-      method: "PUT",
-      body: formData,
-    });
-  },
-  uploadFile(accessToken: string, file: File) {
-    const formData = new FormData();
-    formData.append("file", file);
-    return this.authorized<UploadedFile>("/uploads", accessToken, {
-      method: "POST",
-      body: formData,
-    });
-  },
-  authorized<T>(path: string, accessToken: string, init: RequestInit = {}) {
-    return request<T>(path, {
-      ...init,
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        ...init.headers,
-      },
-    });
+  request<T>(path: string, init: RequestInit = {}) {
+    return request<T>(path, init);
   },
 };

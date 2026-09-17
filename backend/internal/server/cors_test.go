@@ -48,6 +48,19 @@ func TestWithAPICORSAllowsProfileRequest(t *testing.T) {
 	}
 }
 
+func TestWithAPICORSAllowsMonitorPreflight(t *testing.T) {
+	handler := WithAPICORS(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) }), "http://localhost:3000")
+	request := httptest.NewRequest(http.MethodOptions, "/monitors", nil)
+	request.Header.Set("Origin", "http://localhost:3000")
+	request.Header.Set("Access-Control-Request-Headers", "Authorization, Content-Type")
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNoContent || recorder.Header().Get("Access-Control-Allow-Origin") != "http://localhost:3000" || recorder.Header().Get("Access-Control-Allow-Headers") != "Content-Type, Authorization" {
+		t.Fatalf("monitor preflight was not allowed: status=%d headers=%#v", recorder.Code, recorder.Header())
+	}
+}
+
 func TestWithAPICORSAllowsGenericUpload(t *testing.T) {
 	handler := WithAPICORS(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusCreated) }), "http://localhost:3000")
 	request := httptest.NewRequest(http.MethodPost, "/uploads", nil)

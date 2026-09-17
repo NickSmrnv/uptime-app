@@ -37,6 +37,11 @@ func Migrate(ctx context.Context, db *gorm.DB) error {
 				return fmt.Errorf("create refresh_sessions table: %w", err)
 			}
 		}
+		if !migrator.HasTable(&model.Monitor{}) {
+			if err := migrator.CreateTable(&model.Monitor{}); err != nil {
+				return fmt.Errorf("create monitors table: %w", err)
+			}
+		}
 		return nil
 	})
 }

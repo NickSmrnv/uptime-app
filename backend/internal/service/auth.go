@@ -148,7 +148,7 @@ func (s *AuthenticationService) Refresh(ctx context.Context, refreshToken string
 }
 
 func (s *AuthenticationService) Profile(ctx context.Context, accessToken string) (PublicUser, error) {
-	userID, err := s.userIDFromAccessToken(accessToken)
+	userID, err := s.UserIDFromAccessToken(accessToken)
 	if err != nil {
 		return PublicUser{}, ErrUnauthorized
 	}
@@ -163,7 +163,7 @@ func (s *AuthenticationService) Profile(ctx context.Context, accessToken string)
 }
 
 func (s *AuthenticationService) UpdateProfile(ctx context.Context, accessToken, name string) (PublicUser, error) {
-	userID, err := s.userIDFromAccessToken(accessToken)
+	userID, err := s.UserIDFromAccessToken(accessToken)
 	if err != nil {
 		return PublicUser{}, ErrUnauthorized
 	}
@@ -182,7 +182,7 @@ func (s *AuthenticationService) UpdateProfile(ctx context.Context, accessToken, 
 }
 
 func (s *AuthenticationService) UpdateAvatar(ctx context.Context, accessToken string, avatar AvatarInput) (PublicUser, error) {
-	userID, err := s.userIDFromAccessToken(accessToken)
+	userID, err := s.UserIDFromAccessToken(accessToken)
 	if err != nil {
 		return PublicUser{}, ErrUnauthorized
 	}
@@ -243,7 +243,7 @@ func (s *AuthenticationService) signAccessToken(userID uuid.UUID, now time.Time)
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(s.config.JWTSecret)
 }
 
-func (s *AuthenticationService) userIDFromAccessToken(accessToken string) (uuid.UUID, error) {
+func (s *AuthenticationService) UserIDFromAccessToken(accessToken string) (uuid.UUID, error) {
 	claims := jwt.MapClaims{}
 	parsed, err := jwt.ParseWithClaims(accessToken, claims, func(token *jwt.Token) (any, error) {
 		if token.Method != jwt.SigningMethodHS256 {

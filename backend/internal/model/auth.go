@@ -26,3 +26,13 @@ type RefreshSession struct {
 	CreatedAt    time.Time  `gorm:"not null"`
 	UpdatedAt    time.Time  `gorm:"not null"`
 }
+
+type Monitor struct {
+	ID              uuid.UUID `gorm:"type:uuid;primaryKey"`
+	UserID          uuid.UUID `gorm:"type:uuid;not null;index:idx_monitors_user_created,priority:1"`
+	User            User      `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;foreignKey:UserID"`
+	URL             string    `gorm:"size:2048;not null"`
+	IntervalSeconds int       `gorm:"not null"`
+	CreatedAt       time.Time `gorm:"not null;index:idx_monitors_user_created,priority:2"`
+	UpdatedAt       time.Time `gorm:"not null"`
+}
