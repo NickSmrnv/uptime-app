@@ -15,6 +15,29 @@ Keep commits focused and use short imperative subjects, for example `Add uptime 
 
 Pull requests should explain the user-facing change, list validation performed, link the relevant issue, and call out configuration changes or deferred tests. Include screenshots for visual frontend changes.
 
+## GitHub Flow
+
+- Перед началом каждой задачи создать отдельную ветку от актуальной `master`; не вносить изменения и не создавать коммиты напрямую в `master`.
+- Имена веток: `feat/<feature-name>` для новой функциональности и `fix/<fix-name>` для исправлений.
+- Название после префикса писать на английском, в `kebab-case`, например: `feat/avatar-upload` или `fix/avatar-display`.
+- После выполнения задачи открыть Pull Request из рабочей ветки в `master`; вливать изменения только через Pull Request после прохождения обязательных проверок.
+
+## Pull Requests
+
+Перед созданием Pull Request:
+
+- Убедиться, что ветка создана от актуального `master`, а все изменения задачи находятся только в ней. Не включать в PR пользовательские или несвязанные изменения без явного запроса.
+- Проверить `git diff --check`, просмотреть `git diff master...HEAD` и выполнить проверки из всех затронутых локальных `AGENTS.md`.
+- Обновить удалённый `master` через `git fetch origin master` и при необходимости безопасно перенести свою ветку на него. Не переписывать чужую историю и не использовать принудительную отправку без явного разрешения.
+- Отправить рабочую ветку командой `git push -u origin <branch>`.
+
+При создании Pull Request:
+
+- Направлять его из рабочей ветки в `master`. Заголовок должен соответствовать Conventional Commits, быть короче 72 символов и описывать пользовательское изменение в повелительном наклонении, например `feat: add monitor creation`.
+- В описании обязательно указать: пользовательский результат, ключевые технические изменения, выполненные проверки с их результатом, конфигурационные изменения, ограничения или отложенные проверки, ссылку на задачу/issue при наличии и скриншоты для визуальных frontend-изменений.
+- После создания проверить base/head, заголовок, описание и ссылку на PR через `gh pr view` или веб-интерфейс, затем сообщить пользователю URL.
+- Если отсутствуют `origin`, права на репозиторий или действующая авторизация GitHub, не выдумывать PR и не менять настройки доступа: сообщить точную причину и запросить подключение remote или повторную авторизацию.
+
 ## Validation
 
 Before review, run the checks specified by the local `AGENTS.md` for every application changed. Avoid unrelated formatting or dependency updates.
