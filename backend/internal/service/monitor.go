@@ -30,6 +30,10 @@ type AccessTokenVerifier interface {
 	UserIDFromAccessToken(string) (uuid.UUID, error)
 }
 
+type MonitorUserStore interface {
+	FindByID(context.Context, uuid.UUID) (*model.User, error)
+}
+
 type MonitorInput struct {
 	URL             string
 	IntervalSeconds int
@@ -37,12 +41,13 @@ type MonitorInput struct {
 
 type MonitorService struct {
 	monitors MonitorStore
+	users    MonitorUserStore
 	tokens   AccessTokenVerifier
 	now      func() time.Time
 }
 
-func NewMonitorService(monitors MonitorStore, tokens AccessTokenVerifier) *MonitorService {
-	return &MonitorService{monitors: monitors, tokens: tokens, now: func() time.Time { return time.Now().UTC() }}
+func NewMonitorService(monitors MonitorStore, users MonitorUserStore, tokens AccessTokenVerifier) *MonitorService {
+	return &MonitorService{monitors: monitors, users: users, tokens: tokens, now: func() time.Time { return time.Now().UTC() }}
 }
 
 func (s *MonitorService) Create(ctx context.Context, accessToken string, input MonitorInput) (model.Monitor, error) {
@@ -79,6 +84,13 @@ func (s *MonitorService) Create(ctx context.Context, accessToken string, input M
 func (s *MonitorService) List(ctx context.Context, accessToken string) ([]model.Monitor, error) {
 	userID, err := s.tokens.UserIDFromAccessToken(accessToken)
 	if err != nil {
+		return nil, ErrUnauthorized
+	}
+	user, err := s.users.FindByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
 		return nil, ErrUnauthorized
 	}
 	return s.monitors.ListByUserID(ctx, userID)

@@ -12,6 +12,16 @@ import (
 
 type memoryMonitors struct{ monitors []model.Monitor }
 
+type memoryMonitorUsers struct{ users map[uuid.UUID]model.User }
+
+func (m memoryMonitorUsers) FindByID(_ context.Context, id uuid.UUID) (*model.User, error) {
+	user, ok := m.users[id]
+	if !ok {
+		return nil, nil
+	}
+	return &user, nil
+}
+
 func (m *memoryMonitors) CreateIfBelowLimit(_ context.Context, monitor *model.Monitor, limit int) (bool, error) {
 	count := 0
 	for _, existing := range m.monitors {
@@ -46,7 +56,7 @@ func (v fakeTokenVerifier) UserIDFromAccessToken(string) (uuid.UUID, error) { re
 func TestCreateMonitorValidatesAndPersistsInput(t *testing.T) {
 	userID := uuid.New()
 	store := &memoryMonitors{}
-	svc := NewMonitorService(store, fakeTokenVerifier{userID: userID})
+	svc := NewMonitorService(store, memoryMonitorUsers{}, fakeTokenVerifier{userID: userID})
 	svc.now = func() time.Time { return time.Date(2026, 9, 17, 10, 0, 0, 0, time.UTC) }
 
 	monitor, err := svc.Create(context.Background(), "access", MonitorInput{URL: " https://example.com/health ", IntervalSeconds: 300})
@@ -59,7 +69,7 @@ func TestCreateMonitorValidatesAndPersistsInput(t *testing.T) {
 }
 
 func TestCreateMonitorRejectsInvalidURLAndInterval(t *testing.T) {
-	svc := NewMonitorService(&memoryMonitors{}, fakeTokenVerifier{userID: uuid.New()})
+	svc := NewMonitorService(&memoryMonitors{}, memoryMonitorUsers{}, fakeTokenVerifier{userID: uuid.New()})
 	for _, input := range []MonitorInput{
 		{URL: "example.com", IntervalSeconds: 60},
 		{URL: "ftp://example.com", IntervalSeconds: 60},
@@ -82,18 +92,27 @@ func TestCreateMonitorEnforcesUserLimit(t *testing.T) {
 	for range maxMonitorsPerUser {
 		store.monitors = append(store.monitors, model.Monitor{UserID: userID})
 	}
-	svc := NewMonitorService(store, fakeTokenVerifier{userID: userID})
+	svc := NewMonitorService(store, memoryMonitorUsers{}, fakeTokenVerifier{userID: userID})
 	if _, err := svc.Create(context.Background(), "access", MonitorInput{URL: "https://example.com", IntervalSeconds: 60}); !errors.Is(err, ErrMonitorLimitReached) {
 		t.Fatalf("create error = %v", err)
 	}
 }
 
 func TestMonitorRequiresValidAccessToken(t *testing.T) {
-	svc := NewMonitorService(&memoryMonitors{}, fakeTokenVerifier{err: errors.New("bad token")})
+	svc := NewMonitorService(&memoryMonitors{}, memoryMonitorUsers{}, fakeTokenVerifier{err: errors.New("bad token")})
 	if _, err := svc.List(context.Background(), "access"); !errors.Is(err, ErrUnauthorized) {
 		t.Fatalf("list error = %v", err)
 	}
 	if _, err := svc.Create(context.Background(), "access", MonitorInput{URL: "https://example.com", IntervalSeconds: 60}); !errors.Is(err, ErrUnauthorized) {
 		t.Fatalf("create error = %v", err)
+	}
+}
+
+func TestListMonitorsRejectsDeletedUser(t *testing.T) {
+	userID := uuid.New()
+	svc := NewMonitorService(&memoryMonitors{}, memoryMonitorUsers{users: map[uuid.UUID]model.User{}}, fakeTokenVerifier{userID: userID})
+
+	if _, err := svc.List(context.Background(), "access"); !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("list error = %v", err)
 	}
 }
