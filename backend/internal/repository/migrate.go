@@ -7,7 +7,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// Migrate creates the initial schema. Future changes require explicit new steps.
+// Migrate applies explicit, repeatable schema and data changes inside one transaction before the API starts.
+// It uses existence checks instead of AutoMigrate so production changes stay deliberate and reviewable.
 func Migrate(ctx context.Context, db *gorm.DB) error {
 	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		migrator := tx.Migrator()

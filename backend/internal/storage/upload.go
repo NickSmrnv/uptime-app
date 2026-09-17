@@ -24,6 +24,7 @@ type UploadStorage struct {
 	directory string
 }
 
+// NewUploadStorage validates storage availability at startup instead of deferring failure to a client upload.
 func NewUploadStorage(directory string) (*UploadStorage, error) {
 	if directory == "" {
 		return nil, errors.New("upload directory is empty")
@@ -34,6 +35,8 @@ func NewUploadStorage(directory string) (*UploadStorage, error) {
 	return &UploadStorage{directory: directory}, nil
 }
 
+// Save writes through a private temporary file and atomically renames it so readers never observe
+// a partially written upload.
 func (s *UploadStorage) Save(ctx context.Context, category string, data []byte, extension string) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
@@ -74,6 +77,8 @@ func (s *UploadStorage) Save(ctx context.Context, category string, data []byte, 
 	return key, nil
 }
 
+// Delete validates the storage key before removal and treats a missing file as already deleted,
+// making replacement cleanup safe to retry.
 func (s *UploadStorage) Delete(ctx context.Context, key string) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -91,6 +96,7 @@ func (s *UploadStorage) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
+// ServeHTTP forces non-avatar files to download and marks them nosniff to avoid executing arbitrary uploads inline.
 func (s *UploadStorage) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	key := strings.TrimPrefix(r.URL.Path, "/uploads/")
 	if !validUploadKey(key) {
@@ -105,6 +111,8 @@ func (s *UploadStorage) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, filepath.Join(s.directory, filepath.FromSlash(key)))
 }
 
+// validUploadKey accepts only the generated category/UUID filename layout, rejecting traversal and
+// arbitrary filesystem paths before deletion or HTTP serving.
 func validUploadKey(key string) bool {
 	category, filename, ok := strings.Cut(key, "/")
 	return ok && !strings.Contains(filename, "/") && uploadCategory.MatchString(category) && uploadFilename.MatchString(filename)

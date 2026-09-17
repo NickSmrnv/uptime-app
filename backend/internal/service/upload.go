@@ -30,8 +30,11 @@ type UploadService struct {
 	files FileStore
 }
 
+// NewUploadService binds the upload use case to a storage interface so validation can be tested
+// independently of the local filesystem implementation.
 func NewUploadService(files FileStore) *UploadService { return &UploadService{files: files} }
 
+// Upload derives a basename and extension before storage to prevent client-controlled path traversal.
 func (s *UploadService) Upload(ctx context.Context, input FileInput) (UploadedFile, error) {
 	if s.files == nil || len(input.Data) == 0 || len(input.Data) > maxGenericUploadSize {
 		return UploadedFile{}, ErrInvalidInput

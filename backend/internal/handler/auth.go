@@ -41,9 +41,12 @@ type AuthHandler struct {
 	cookie CookieConfig
 }
 
+// NewAuthHandler keeps refresh-cookie transport policy separate from authentication business rules.
 func NewAuthHandler(auth AuthenticationService, cookie CookieConfig) *AuthHandler {
 	return &AuthHandler{auth: auth, cookie: cookie}
 }
+
+// RegisterRoutes uses method-qualified patterns so ServeMux rejects unsupported API operations.
 func (h *AuthHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /auth/register", h.register)
 	mux.HandleFunc("POST /auth/login", h.login)
@@ -82,6 +85,7 @@ func (h *AuthHandler) register(w http.ResponseWriter, r *http.Request) {
 	h.setRefreshCookie(w, result.RefreshToken)
 	writeJSON(w, http.StatusCreated, responseFrom(result))
 }
+
 func (h *AuthHandler) login(w http.ResponseWriter, r *http.Request) {
 	input, ok := decodeCredentials(w, r)
 	if !ok {
@@ -94,6 +98,7 @@ func (h *AuthHandler) login(w http.ResponseWriter, r *http.Request) {
 	h.setRefreshCookie(w, result.RefreshToken)
 	writeJSON(w, http.StatusOK, responseFrom(result))
 }
+
 func (h *AuthHandler) refresh(w http.ResponseWriter, r *http.Request) {
 	token, err := r.Cookie(refreshCookieName)
 	if err != nil || token.Value == "" {
@@ -107,6 +112,7 @@ func (h *AuthHandler) refresh(w http.ResponseWriter, r *http.Request) {
 	h.setRefreshCookie(w, result.RefreshToken)
 	writeJSON(w, http.StatusOK, responseFrom(result))
 }
+
 func (h *AuthHandler) logout(w http.ResponseWriter, r *http.Request) {
 	cookie, _ := r.Cookie(refreshCookieName)
 	if cookie != nil {
@@ -119,6 +125,7 @@ func (h *AuthHandler) logout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// decodeCredentials rejects oversized bodies and unknown fields so the authentication boundary is explicit.
 func decodeCredentials(w http.ResponseWriter, r *http.Request) (service.UserInput, bool) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	defer r.Body.Close()
@@ -131,6 +138,7 @@ func decodeCredentials(w http.ResponseWriter, r *http.Request) (service.UserInpu
 	}
 	return service.UserInput{Name: request.Name, Email: request.Email, Password: request.Password}, true
 }
+
 func (h *AuthHandler) profile(w http.ResponseWriter, r *http.Request) {
 	user, err := h.auth.Profile(r.Context(), accessToken(r))
 	if !h.writeProfileError(w, err) {
@@ -138,6 +146,7 @@ func (h *AuthHandler) profile(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, userFrom(user))
 }
+
 func (h *AuthHandler) updateProfile(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	defer r.Body.Close()
@@ -157,6 +166,8 @@ func (h *AuthHandler) updateProfile(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, userFrom(user))
 }
 
+// updateAvatar validates bytes at the HTTP boundary to reject oversized, malformed, and mislabeled files
+// before they reach storage.
 func (h *AuthHandler) updateAvatar(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxAvatarSize+(1<<20))
 	defer r.Body.Close()
@@ -205,6 +216,8 @@ func (h *AuthHandler) updateAvatar(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, userFrom(user))
 }
+
+// writeAuthError hides unexpected storage or cryptographic failures behind a generic 500 response.
 func (h *AuthHandler) writeAuthError(w http.ResponseWriter, err error) bool {
 	if err == nil {
 		return true
@@ -223,6 +236,8 @@ func (h *AuthHandler) writeAuthError(w http.ResponseWriter, err error) bool {
 	}
 	return false
 }
+
+// writeProfileError prevents repository details from reaching profile clients.
 func (h *AuthHandler) writeProfileError(w http.ResponseWriter, err error) bool {
 	if err == nil {
 		return true
@@ -237,12 +252,15 @@ func (h *AuthHandler) writeProfileError(w http.ResponseWriter, err error) bool {
 	}
 	return false
 }
+
 func responseFrom(result service.AuthenticationResult) authResponse {
 	return authResponse{AccessToken: result.AccessToken, User: userFrom(result.User)}
 }
+
 func userFrom(user service.PublicUser) userResponse {
 	return userResponse{ID: user.ID.String(), Name: user.Name, Email: user.Email, AvatarURL: user.AvatarURL}
 }
+
 func accessToken(r *http.Request) string {
 	const prefix = "Bearer "
 	value := r.Header.Get("Authorization")
@@ -251,17 +269,23 @@ func accessToken(r *http.Request) string {
 	}
 	return value[len(prefix):]
 }
+
+// setRefreshCookie limits JavaScript exposure and cross-site delivery with HttpOnly and Strict SameSite.
 func (h *AuthHandler) setRefreshCookie(w http.ResponseWriter, value string) {
 	http.SetCookie(w, &http.Cookie{Name: refreshCookieName, Value: value, Path: "/auth", MaxAge: int(h.cookie.RefreshTokenTTL.Seconds()), HttpOnly: true, Secure: h.cookie.Secure, SameSite: http.SameSiteStrictMode})
 }
+
+// clearRefreshCookie mirrors the original cookie scope so browsers reliably remove the stored token.
 func (h *AuthHandler) clearRefreshCookie(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{Name: refreshCookieName, Value: "", Path: "/auth", MaxAge: -1, HttpOnly: true, Secure: h.cookie.Secure, SameSite: http.SameSiteStrictMode})
 }
+
 func writeJSON(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(body)
 }
+
 func writeError(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, map[string]string{"error": message})
 }

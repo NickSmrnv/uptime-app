@@ -24,6 +24,7 @@ type Config struct {
 	DBConnMaxLife     time.Duration
 }
 
+// Load rejects unsafe or unusable environment combinations before the application opens resources.
 func Load() (Config, error) {
 	accessTTL, err := durationEnv("ACCESS_TOKEN_TTL", 24*time.Hour)
 	if err != nil {
@@ -80,6 +81,7 @@ func stringEnv(key, fallback string) string {
 	}
 	return fallback
 }
+
 func durationEnv(key string, fallback time.Duration) (time.Duration, error) {
 	value := strings.TrimSpace(os.Getenv(key))
 	if value == "" {
@@ -91,6 +93,7 @@ func durationEnv(key string, fallback time.Duration) (time.Duration, error) {
 	}
 	return parsed, nil
 }
+
 func boolEnv(key string, fallback bool) (bool, error) {
 	value := strings.TrimSpace(os.Getenv(key))
 	if value == "" {
@@ -102,6 +105,7 @@ func boolEnv(key string, fallback bool) (bool, error) {
 	}
 	return parsed, nil
 }
+
 func intEnv(key string, fallback int) (int, error) {
 	value := strings.TrimSpace(os.Getenv(key))
 	if value == "" {

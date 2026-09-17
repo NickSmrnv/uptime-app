@@ -19,7 +19,11 @@ var (
 
 type UserRepository struct{ db *gorm.DB }
 
+// NewUserRepository keeps user persistence behind the shared configured GORM connection.
 func NewUserRepository(db *gorm.DB) *UserRepository { return &UserRepository{db: db} }
+
+// Create inserts a user and translates the database's unique-email violation into a domain error
+// so callers do not depend on PostgreSQL error details.
 func (r *UserRepository) Create(ctx context.Context, user *model.User) error {
 	if err := r.db.WithContext(ctx).Create(user).Error; err != nil {
 		if isUniqueViolation(err) {
@@ -29,6 +33,9 @@ func (r *UserRepository) Create(ctx context.Context, user *model.User) error {
 	}
 	return nil
 }
+
+// FindByEmail returns nil for an absent user, which distinguishes an ordinary login miss from a
+// database failure without requiring callers to interpret GORM errors.
 func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*model.User, error) {
 	var user model.User
 	err := r.db.WithContext(ctx).Where("email = ?", email).Take(&user).Error
@@ -41,6 +48,7 @@ func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*model.
 	return &user, nil
 }
 
+// FindByID lets callers reject a valid but stale token after its user was removed.
 func (r *UserRepository) FindByID(ctx context.Context, id uuid.UUID) (*model.User, error) {
 	var user model.User
 	err := r.db.WithContext(ctx).Where("id = ?", id).Take(&user).Error
@@ -53,6 +61,7 @@ func (r *UserRepository) FindByID(ctx context.Context, id uuid.UUID) (*model.Use
 	return &user, nil
 }
 
+// UpdateName updates only the display name and reloads the row so its result reflects database-managed fields.
 func (r *UserRepository) UpdateName(ctx context.Context, id uuid.UUID, name string) (*model.User, error) {
 	result := r.db.WithContext(ctx).Model(&model.User{}).Where("id = ?", id).Update("name", name)
 	if result.Error != nil {
@@ -64,6 +73,7 @@ func (r *UserRepository) UpdateName(ctx context.Context, id uuid.UUID, name stri
 	return r.FindByID(ctx, id)
 }
 
+// UpdateAvatar changes only the stored avatar key and reloads the user for a complete public response.
 func (r *UserRepository) UpdateAvatar(ctx context.Context, id uuid.UUID, filename string) (*model.User, error) {
 	result := r.db.WithContext(ctx).Model(&model.User{}).Where("id = ?", id).Update("avatar_filename", filename)
 	if result.Error != nil {
@@ -77,13 +87,19 @@ func (r *UserRepository) UpdateAvatar(ctx context.Context, id uuid.UUID, filenam
 
 type SessionRepository struct{ db *gorm.DB }
 
+// NewSessionRepository keeps refresh-session persistence behind the shared configured GORM connection.
 func NewSessionRepository(db *gorm.DB) *SessionRepository { return &SessionRepository{db: db} }
+
+// Create persists a hashed refresh session after the service has generated its bearer counterpart.
 func (r *SessionRepository) Create(ctx context.Context, session *model.RefreshSession) error {
 	if err := r.db.WithContext(ctx).Create(session).Error; err != nil {
 		return fmt.Errorf("create refresh session: %w", err)
 	}
 	return nil
 }
+
+// Rotate locks the previous session and revokes it before inserting its replacement in one transaction.
+// The row lock ensures concurrent refreshes cannot both succeed with the same token.
 func (r *SessionRepository) Rotate(ctx context.Context, tokenHash string, replacement *model.RefreshSession, now time.Time) (model.RefreshSession, error) {
 	var previous model.RefreshSession
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -111,6 +127,9 @@ func (r *SessionRepository) Rotate(ctx context.Context, tokenHash string, replac
 	}
 	return previous, nil
 }
+
+// RevokeByTokenHash marks an active session revoked without treating an already absent or revoked
+// token as an error, which makes logout repeatable.
 func (r *SessionRepository) RevokeByTokenHash(ctx context.Context, tokenHash string, now time.Time) error {
 	result := r.db.WithContext(ctx).Model(&model.RefreshSession{}).Where("token_hash = ? AND revoked_at IS NULL", tokenHash).Update("revoked_at", now)
 	if result.Error != nil {
@@ -118,4 +137,6 @@ func (r *SessionRepository) RevokeByTokenHash(ctx context.Context, tokenHash str
 	}
 	return nil
 }
+
+// isUniqueViolation hides the ORM-specific duplicate-key sentinel behind the repository boundary.
 func isUniqueViolation(err error) bool { return errors.Is(err, gorm.ErrDuplicatedKey) }

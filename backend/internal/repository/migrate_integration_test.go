@@ -13,8 +13,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// This test requires a dedicated disposable PostgreSQL database. It is skipped
-// unless TEST_DATABASE_URL is explicitly set.
+// TestMigratePostgreSQLAndRotateSession requires a disposable database because it drops tables.
 func TestMigratePostgreSQLAndRotateSession(t *testing.T) {
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {

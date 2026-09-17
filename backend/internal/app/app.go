@@ -18,6 +18,8 @@ type Application struct {
 	Close   func() error
 }
 
+// New completes startup prerequisites before exposing a handler so requests never run against an
+// unreachable database, an unmigrated schema, or unavailable upload storage.
 func New(ctx context.Context, cfg config.Config) (Application, error) {
 	db, closeDB, err := repository.OpenPostgres(ctx, cfg)
 	if err != nil {
