@@ -17,6 +17,13 @@ export type UploadedFile = {
   size: number;
 };
 
+export type Monitor = {
+  id: string;
+  url: string;
+  intervalSeconds: number;
+  createdAt: string;
+};
+
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
