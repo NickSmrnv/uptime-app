@@ -15,6 +15,20 @@ printf '%s\n' "$patch_command" | sed -nE \
     's/^\*\*\* (Update File|Delete File|Move to): (.*)$/\2/p' > "$path_list"
 
 blocked_paths=""
+max_version=0
+for migration in "$repo_root"/backend/migrations/*.sql; do
+    [ -f "$migration" ] || continue
+    filename=${migration##*/}
+    version=${filename%%_*}
+    case "$version" in
+        ''|*[!0-9]*) continue ;;
+    esac
+    version_number=$(printf '%s' "$version" | sed 's/^0*//')
+    [ -n "$version_number" ] || version_number=0
+    [ "$version_number" -gt "$max_version" ] && max_version=$version_number
+done
+next_version=$(printf '%06d' $((max_version + 1)))
+
 while IFS= read -r path; do
     path=${path#\"}
     path=${path%\"}
@@ -38,10 +52,10 @@ done < "$path_list"
 
 [ -n "$blocked_paths" ] || exit 0
 
-jq -n --arg paths "$blocked_paths" '{
+jq -n --arg paths "$blocked_paths" --arg next_version "$next_version" '{
     hookSpecificOutput: {
         hookEventName: "PreToolUse",
         permissionDecision: "deny",
-        permissionDecisionReason: ("Editing or deleting committed migrations is blocked: " + $paths)
+        permissionDecisionReason: ("Editing or deleting committed migrations is blocked: " + $paths + ". Add the change in a new migration, for example backend/migrations/" + $next_version + "_describe_change.sql.")
     }
 }'
