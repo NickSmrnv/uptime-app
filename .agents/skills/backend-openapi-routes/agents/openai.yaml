@@ -1,0 +1,4 @@
+interface:
+  display_name: "Backend OpenAPI Routes"
+  short_description: "Keep backend routes in OpenAPI sync"
+  default_prompt: "Use $backend-openapi-routes to document changed backend routes and regenerate the OpenAPI contract."

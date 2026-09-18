@@ -2,8 +2,23 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider, useAuth } from "./AuthProvider";
 
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+const { axiosClient, axiosRequest } = vi.hoisted(() => {
+  const axiosRequest = vi.fn();
+  return {
+    axiosRequest,
+    axiosClient: { request: axiosRequest, defaults: { headers: { common: {} as Record<string, string> } } },
+  };
+});
+
+vi.mock("axios", () => ({
+  default: {
+    create: vi.fn(() => axiosClient),
+    isAxiosError: (error: unknown) => typeof error === "object" && error !== null && "isAxiosError" in error && error.isAxiosError === true,
+  },
+}));
+
+function axiosError(status: number, message: string) {
+  return { isAxiosError: true, response: { status, data: { error: message } } };
 }
 
 function Probe() {
@@ -21,39 +36,40 @@ function Probe() {
 describe("AuthProvider", () => {
   beforeEach(() => {
     process.env.NEXT_PUBLIC_API_URL = "http://api.test";
-    vi.stubGlobal("fetch", vi.fn());
+    axiosRequest.mockReset();
+    axiosClient.defaults.headers.common = {};
   });
 
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
+  afterEach(() => vi.clearAllMocks());
 
   it("restores a session from the HttpOnly refresh cookie", async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ accessToken: "access", user: { id: "1", name: "Person", email: "person@example.com" } }));
+    axiosRequest.mockResolvedValueOnce({ status: 200, data: { accessToken: "access", user: { id: "1", name: "Person", email: "person@example.com" } } });
     render(<AuthProvider><Probe /></AuthProvider>);
 
     await screen.findByText("authenticated:person@example.com");
-    expect(fetch).toHaveBeenCalledWith("http://api.test/auth/refresh", expect.objectContaining({ credentials: "include", method: "POST" }));
+    expect(axiosRequest).toHaveBeenCalledWith(expect.objectContaining({ url: "http://api.test/auth/refresh", method: "POST" }));
+    expect(axiosClient.defaults.headers.common.Authorization).toBe("Bearer access");
     expect(sessionStorage.getItem("accessToken")).toBeNull();
   });
 
   it("stores a login session only in React state", async () => {
-    vi.mocked(fetch)
-      .mockResolvedValueOnce(jsonResponse({ error: "invalid refresh token" }, 401))
-      .mockResolvedValueOnce(jsonResponse({ accessToken: "access", user: { id: "1", name: "Person", email: "person@example.com" } }));
+    axiosRequest
+      .mockRejectedValueOnce(axiosError(401, "invalid refresh token"))
+      .mockResolvedValueOnce({ status: 200, data: { accessToken: "access", user: { id: "1", name: "Person", email: "person@example.com" } } });
     render(<AuthProvider><Probe /></AuthProvider>);
 
     await screen.findByText("anonymous:");
     fireEvent.click(screen.getByRole("button", { name: "login" }));
     await screen.findByText("authenticated:person@example.com");
+    expect(axiosClient.defaults.headers.common.Authorization).toBe("Bearer access");
     expect(sessionStorage.getItem("accessToken")).toBeNull();
   });
 
   it("creates an account and clears the session on logout", async () => {
-    vi.mocked(fetch)
-      .mockResolvedValueOnce(jsonResponse({ error: "invalid refresh token" }, 401))
-      .mockResolvedValueOnce(jsonResponse({ accessToken: "access", user: { id: "2", name: "New person", email: "new@example.com" } }))
-      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    axiosRequest
+      .mockRejectedValueOnce(axiosError(401, "invalid refresh token"))
+      .mockResolvedValueOnce({ status: 200, data: { accessToken: "access", user: { id: "2", name: "New person", email: "new@example.com" } } })
+      .mockResolvedValueOnce({ status: 204, data: "" });
     render(<AuthProvider><Probe /></AuthProvider>);
 
     await screen.findByText("anonymous:");
@@ -61,5 +77,6 @@ describe("AuthProvider", () => {
     await screen.findByText("authenticated:new@example.com");
     fireEvent.click(screen.getByRole("button", { name: "logout" }));
     await waitFor(() => expect(screen.getByText("anonymous:")).toBeInTheDocument());
+    expect(axiosClient.defaults.headers.common.Authorization).toBeUndefined();
   });
 });

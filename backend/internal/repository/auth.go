@@ -13,6 +13,7 @@ import (
 
 var (
 	ErrDuplicateEmail  = errors.New("email already exists")
+	ErrUserNotFound    = errors.New("user not found")
 	ErrSessionNotFound = errors.New("refresh session not found")
 	ErrSessionInvalid  = errors.New("refresh session is invalid")
 )

@@ -24,18 +24,28 @@ type UploadHandler struct {
 	uploads FileUploader
 }
 
-// NewUploadHandler depends on narrow interfaces so HTTP behavior can be tested without storage or JWT setup.
 func NewUploadHandler(auth ProfileReader, uploads FileUploader) *UploadHandler {
 	return &UploadHandler{auth: auth, uploads: uploads}
 }
 
-// RegisterRoutes keeps generic upload restricted to POST so reads cannot create files.
 func (h *UploadHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /uploads", h.upload)
 }
 
 // upload authenticates first, then bounds and reads one multipart file before delegating storage.
 // This order avoids processing untrusted file data for unauthorized requests.
+// @Summary Upload a file
+// @Tags uploads
+// @Accept mpfd
+// @Produce json
+// @Security BearerAuth
+// @Param file formData file true "File up to 10 MB"
+// @Success 201 {object} service.UploadedFile
+// @Failure 400 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
+// @Failure 413 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /uploads [post]
 func (h *UploadHandler) upload(w http.ResponseWriter, r *http.Request) {
 	if _, err := h.auth.Profile(r.Context(), accessToken(r)); err != nil {
 		writeUploadAuthError(w, err)
@@ -79,7 +89,6 @@ func (h *UploadHandler) upload(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, result)
 }
 
-// writeUploadAuthError keeps internal authentication failures private.
 func writeUploadAuthError(w http.ResponseWriter, err error) {
 	if errors.Is(err, service.ErrUnauthorized) {
 		writeError(w, http.StatusUnauthorized, "unauthorized")

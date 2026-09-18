@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/swaggo/http-swagger"
 	"github.com/uptime-app/backend/internal/config"
 	"github.com/uptime-app/backend/internal/handler"
 	"github.com/uptime-app/backend/internal/repository"
@@ -37,7 +38,9 @@ func New(ctx context.Context, cfg config.Config) (Application, error) {
 	auth := service.NewAuthenticationService(repository.NewUserRepository(db), repository.NewSessionRepository(db), uploads, service.AuthConfig{JWTSecret: cfg.JWTSecret, JWTIssuer: cfg.JWTIssuer, AccessTokenTTL: cfg.AccessTokenTTL, RefreshTokenTTL: cfg.RefreshTokenTTL})
 	mux := http.NewServeMux()
 	handler.NewAuthHandler(auth, handler.CookieConfig{Secure: cfg.CookieSecure, RefreshTokenTTL: cfg.RefreshTokenTTL}).RegisterRoutes(mux)
+	handler.NewMonitorHandler(service.NewMonitorService(repository.NewMonitorRepository(db), auth)).RegisterRoutes(mux)
 	handler.NewUploadHandler(auth, service.NewUploadService(uploads)).RegisterRoutes(mux)
 	mux.Handle("GET /uploads/{path...}", uploads)
+	mux.Handle("GET /swagger/", httpSwagger.Handler(httpSwagger.URL("/swagger/doc.json")))
 	return Application{Handler: server.WithAPICORS(mux, cfg.CORSAllowedOrigin), Close: closeDB}, nil
 }

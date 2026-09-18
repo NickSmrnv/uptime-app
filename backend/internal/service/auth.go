@@ -76,14 +76,10 @@ type AuthenticationResult struct {
 	User         PublicUser
 }
 
-// NewAuthenticationService uses a UTC clock so token and session expiry timestamps are consistent
-// across storage and JWT claims.
 func NewAuthenticationService(users UserStore, sessions SessionStore, uploads FileStore, cfg AuthConfig) *AuthenticationService {
 	return &AuthenticationService{users: users, sessions: sessions, uploads: uploads, config: cfg, now: func() time.Time { return time.Now().UTC() }}
 }
 
-// Register uses a canonical email and bcrypt hash so equivalent addresses share one identity and
-// the original password never reaches the database.
 func (s *AuthenticationService) Register(ctx context.Context, input UserInput) (AuthenticationResult, error) {
 	email, err := normalizeEmail(input.Email)
 	name, errName := normalizeName(input.Name)
@@ -105,8 +101,6 @@ func (s *AuthenticationService) Register(ctx context.Context, input UserInput) (
 	return s.issue(ctx, user)
 }
 
-// Login returns the same credential error for an unknown email and a wrong password to avoid
-// disclosing which accounts exist.
 func (s *AuthenticationService) Login(ctx context.Context, input UserInput) (AuthenticationResult, error) {
 	email, err := normalizeEmail(input.Email)
 	if err != nil || input.Password == "" {
@@ -122,8 +116,6 @@ func (s *AuthenticationService) Login(ctx context.Context, input UserInput) (Aut
 	return s.issue(ctx, *user)
 }
 
-// Refresh atomically replaces a valid refresh session and returns a new access token,
-// preventing a previously used refresh token from being replayed.
 func (s *AuthenticationService) Refresh(ctx context.Context, refreshToken string) (AuthenticationResult, error) {
 	if refreshToken == "" {
 		return AuthenticationResult{}, ErrInvalidRefresh
@@ -155,10 +147,8 @@ func (s *AuthenticationService) Refresh(ctx context.Context, refreshToken string
 	return AuthenticationResult{AccessToken: accessToken, RefreshToken: newToken, User: publicUser(*user)}, nil
 }
 
-// Profile reloads the user after token validation so deleted users and changed profile data are
-// never inferred from stale JWT claims.
 func (s *AuthenticationService) Profile(ctx context.Context, accessToken string) (PublicUser, error) {
-	userID, err := s.userIDFromAccessToken(accessToken)
+	userID, err := s.UserIDFromAccessToken(accessToken)
 	if err != nil {
 		return PublicUser{}, ErrUnauthorized
 	}
@@ -172,9 +162,8 @@ func (s *AuthenticationService) Profile(ctx context.Context, accessToken string)
 	return publicUser(*user), nil
 }
 
-// UpdateProfile persists only the validated display name to avoid accepting uncontrolled user attributes.
 func (s *AuthenticationService) UpdateProfile(ctx context.Context, accessToken, name string) (PublicUser, error) {
-	userID, err := s.userIDFromAccessToken(accessToken)
+	userID, err := s.UserIDFromAccessToken(accessToken)
 	if err != nil {
 		return PublicUser{}, ErrUnauthorized
 	}
@@ -192,10 +181,8 @@ func (s *AuthenticationService) UpdateProfile(ctx context.Context, accessToken, 
 	return publicUser(*user), nil
 }
 
-// UpdateAvatar replaces the authenticated user's avatar after validating the accepted image type.
-// It removes a newly stored file on a database failure and the old file only after a successful update.
 func (s *AuthenticationService) UpdateAvatar(ctx context.Context, accessToken string, avatar AvatarInput) (PublicUser, error) {
-	userID, err := s.userIDFromAccessToken(accessToken)
+	userID, err := s.UserIDFromAccessToken(accessToken)
 	if err != nil {
 		return PublicUser{}, ErrUnauthorized
 	}
@@ -228,8 +215,6 @@ func (s *AuthenticationService) UpdateAvatar(ctx context.Context, accessToken st
 	return publicUser(*updated), nil
 }
 
-// Logout revokes the supplied refresh session when present; an absent cookie is treated as a
-// successful logout so clients can safely repeat the request.
 func (s *AuthenticationService) Logout(ctx context.Context, refreshToken string) error {
 	if refreshToken == "" {
 		return nil
@@ -253,16 +238,12 @@ func (s *AuthenticationService) issue(ctx context.Context, user model.User) (Aut
 	return AuthenticationResult{AccessToken: accessToken, RefreshToken: refreshToken, User: publicUser(user)}, nil
 }
 
-// signAccessToken creates an HS256 JWT with standard identity and expiry claims; HS256 is used
-// because this service signs and verifies with the same configured server secret.
 func (s *AuthenticationService) signAccessToken(userID uuid.UUID, now time.Time) (string, error) {
 	claims := jwt.MapClaims{"sub": userID.String(), "iss": s.config.JWTIssuer, "iat": now.Unix(), "exp": now.Add(s.config.AccessTokenTTL).Unix(), "jti": uuid.NewString()}
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(s.config.JWTSecret)
 }
 
-// userIDFromAccessToken verifies the configured issuer and exact signing method before reading
-// the subject UUID, preventing algorithm substitution and untrusted identity claims.
-func (s *AuthenticationService) userIDFromAccessToken(accessToken string) (uuid.UUID, error) {
+func (s *AuthenticationService) UserIDFromAccessToken(accessToken string) (uuid.UUID, error) {
 	claims := jwt.MapClaims{}
 	parsed, err := jwt.ParseWithClaims(accessToken, claims, func(token *jwt.Token) (any, error) {
 		if token.Method != jwt.SigningMethodHS256 {
@@ -284,8 +265,6 @@ func (s *AuthenticationService) userIDFromAccessToken(accessToken string) (uuid.
 	return userID, nil
 }
 
-// normalizeEmail trims and lowercases an address before strict parsing so the unique email key
-// represents one canonical value instead of case or whitespace variants.
 func normalizeEmail(value string) (string, error) {
 	email := strings.ToLower(strings.TrimSpace(value))
 	parsed, err := mail.ParseAddress(email)
@@ -296,7 +275,6 @@ func normalizeEmail(value string) (string, error) {
 }
 
 func validPassword(password string) bool { return utf8.RuneCountInString(password) >= 8 }
-
 func normalizeName(value string) (string, error) {
 	name := strings.TrimSpace(value)
 	if utf8.RuneCountInString(name) < 1 || utf8.RuneCountInString(name) > 100 {
@@ -304,8 +282,6 @@ func normalizeName(value string) (string, error) {
 	}
 	return name, nil
 }
-
-// publicUser prevents password and session fields from crossing the API boundary.
 func publicUser(user model.User) PublicUser {
 	public := PublicUser{ID: user.ID, Name: user.Name, Email: user.Email}
 	if user.AvatarFilename != "" {
@@ -313,16 +289,10 @@ func publicUser(user model.User) PublicUser {
 	}
 	return public
 }
-
-// hashToken returns a deterministic SHA-256 digest so refresh tokens can be matched without
-// storing their bearer value in the database.
 func hashToken(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return fmt.Sprintf("%x", sum[:])
 }
-
-// generateRefreshToken creates 256 bits of cryptographic randomness and returns both its URL-safe
-// bearer value and database-safe hash.
 func generateRefreshToken() (string, string, error) {
 	bytes := make([]byte, 32)
 	if _, err := rand.Read(bytes); err != nil {

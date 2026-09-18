@@ -13,6 +13,16 @@ This is a Go 1.24 API project. The executable entry point is `cmd/api/main.go`. 
 
 Handlers should validate and translate HTTP input, then call services. Keep business rules in services and persistence details in repositories; handlers must not access repositories directly.
 
+## OpenAPI Documentation
+
+Every public HTTP route must have Swaggo annotations that describe its request parameters, authentication, success response, and possible error responses. When a route, its request or response schema, authentication, or API metadata changes, regenerate and commit the OpenAPI contract and ReDoc page:
+
+```bash
+make openapi
+```
+
+Keep the generated `docs/docs.go`, `docs/swagger.json`, `docs/swagger.yaml`, and `docs/redoc.html` synchronized with the annotations.
+
 ## Development and Validation
 
 Run commands from `backend/`:
