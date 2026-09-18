@@ -1,5 +1,17 @@
 {
     "hooks": {
+        "PreToolUse": [
+            {
+                "matcher": "apply_patch|Edit|Write",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "sh .codex/hooks/protect-committed-migrations.sh",
+                        "statusMessage": "Checking committed migrations"
+                    }
+                ]
+            }
+        ],
         "PostToolUse": [
             {
                 "matcher": "apply_patch|Edit|Write",
@@ -7,6 +19,10 @@
                     {
                         "type": "command",
                         "command": ".codex/hooks/gofmt.sh"
+                    },
+                    {
+                        "type": "command",
+                        "command": ".codex/hooks/eslint.sh"
                     }
                 ]
             }
