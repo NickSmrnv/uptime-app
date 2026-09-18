@@ -12,6 +12,7 @@ Minimal Go project structure for the uptime service backend.
 - `internal/service` — application services.
 - `internal/server` — server setup.
 - `pkg` — reusable exported packages.
+- `migrations` — versioned SQL migrations embedded into the backend binary.
 
 The project currently provides email/password authentication backed by PostgreSQL and GORM.
 
@@ -34,6 +35,12 @@ Optional settings:
 - `DB_MAX_OPEN_CONNS`, `DB_MAX_IDLE_CONNS`, `DB_CONN_MAX_LIFETIME` — database pool settings.
 
 The refresh token is stored only in an `HttpOnly`, `Secure`, `SameSite=Strict` cookie. For local HTTP development set `COOKIE_SECURE=false` and leave `CORS_ALLOWED_ORIGIN=http://localhost:3000`. To run the optional PostgreSQL integration test, set `TEST_DATABASE_URL` to a disposable database; the test drops and recreates its authentication tables.
+
+## Database migrations
+
+The API applies pending migrations from `migrations/` during startup. Applied versions are stored in PostgreSQL in `schema_migrations`. Each migration runs once inside a transaction, and startup takes a PostgreSQL advisory lock so multiple API instances cannot apply the same migration concurrently.
+
+Migration files use the `NNNNNN_name.sql` format. Add a new file with a larger version; never edit a migration that may already have been applied. The initial migration is idempotent so databases created by the previous startup migrator are adopted safely.
 
 ## OpenAPI
 
