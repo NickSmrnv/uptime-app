@@ -13,7 +13,10 @@ import (
 	"github.com/uptime-app/backend/internal/repository"
 )
 
-var ErrMonitorLimitReached = errors.New("monitor limit reached")
+var (
+	ErrMonitorLimitReached = errors.New("monitor limit reached")
+	ErrMonitorNotFound     = errors.New("monitor not found")
+)
 
 const (
 	minMonitorIntervalSeconds = 5
@@ -24,6 +27,8 @@ const (
 type MonitorStore interface {
 	CreateIfBelowLimit(context.Context, *model.Monitor, int) (bool, error)
 	ListByUserID(context.Context, uuid.UUID) ([]model.Monitor, error)
+	UpdateByIDAndUserID(context.Context, *model.Monitor) (model.Monitor, error)
+	DeleteByIDAndUserID(context.Context, uuid.UUID, uuid.UUID) error
 }
 
 type AccessTokenVerifier interface {
@@ -82,6 +87,45 @@ func (s *MonitorService) List(ctx context.Context, accessToken string) ([]model.
 		return nil, ErrUnauthorized
 	}
 	return s.monitors.ListByUserID(ctx, userID)
+}
+
+func (s *MonitorService) Update(ctx context.Context, accessToken string, monitorID uuid.UUID, input MonitorInput) (model.Monitor, error) {
+	userID, err := s.tokens.UserIDFromAccessToken(accessToken)
+	if err != nil {
+		return model.Monitor{}, ErrUnauthorized
+	}
+	monitorURL, err := normalizeMonitorURL(input.URL)
+	if err != nil || input.IntervalSeconds < minMonitorIntervalSeconds || input.IntervalSeconds > maxMonitorIntervalSeconds {
+		return model.Monitor{}, ErrInvalidInput
+	}
+	monitor, err := s.monitors.UpdateByIDAndUserID(ctx, &model.Monitor{
+		ID:              monitorID,
+		UserID:          userID,
+		URL:             monitorURL,
+		IntervalSeconds: input.IntervalSeconds,
+		UpdatedAt:       s.now(),
+	})
+	if errors.Is(err, repository.ErrMonitorNotFound) {
+		return model.Monitor{}, ErrMonitorNotFound
+	}
+	if err != nil {
+		return model.Monitor{}, err
+	}
+	return monitor, nil
+}
+
+func (s *MonitorService) Delete(ctx context.Context, accessToken string, monitorID uuid.UUID) error {
+	userID, err := s.tokens.UserIDFromAccessToken(accessToken)
+	if err != nil {
+		return ErrUnauthorized
+	}
+	if err := s.monitors.DeleteByIDAndUserID(ctx, monitorID, userID); errors.Is(err, repository.ErrMonitorNotFound) {
+		return ErrMonitorNotFound
+	}
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func normalizeMonitorURL(value string) (string, error) {

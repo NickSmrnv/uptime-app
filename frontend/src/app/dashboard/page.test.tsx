@@ -85,6 +85,37 @@ describe("DashboardPage", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Достигнут лимит точек мониторинга для аккаунта.");
   });
 
+  it("edits a monitor and updates the card", async () => {
+    const existing: Monitor = { id: "monitor-1", url: "https://example.com", intervalSeconds: 300, createdAt: "2026-09-17T10:00:00Z" };
+    const updated: Monitor = { ...existing, url: "https://updated.example.com", intervalSeconds: 600 };
+    apiFetch.mockResolvedValueOnce([existing]).mockResolvedValueOnce(updated);
+    render(<DashboardPage />);
+
+    await screen.findByText("https://example.com");
+    fireEvent.click(screen.getByRole("button", { name: "Редактировать" }));
+    fireEvent.change(screen.getByLabelText("Адрес сайта"), { target: { value: updated.url } });
+    fireEvent.change(screen.getByLabelText("Интервал"), { target: { value: "10" } });
+    fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledWith("/monitors/monitor-1", { method: "PATCH", body: JSON.stringify({ url: updated.url, intervalSeconds: 600 }) }));
+    expect(await screen.findByText(updated.url)).toBeInTheDocument();
+    expect(screen.getByText("Каждые 10 мин.")).toBeInTheDocument();
+  });
+
+  it("confirms and deletes a monitor", async () => {
+    const existing: Monitor = { id: "monitor-1", url: "https://example.com", intervalSeconds: 300, createdAt: "2026-09-17T10:00:00Z" };
+    apiFetch.mockResolvedValueOnce([existing]).mockResolvedValueOnce(undefined);
+    render(<DashboardPage />);
+
+    await screen.findByText(existing.url);
+    fireEvent.click(screen.getByRole("button", { name: "Удалить" }));
+    expect(screen.getByText("Удалить этот сайт?")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Да, удалить" }));
+
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledWith("/monitors/monitor-1", { method: "DELETE" }));
+    await waitFor(() => expect(screen.queryByText(existing.url)).not.toBeInTheDocument());
+  });
+
   it("shows a loading error from the protected API", async () => {
     apiFetch.mockRejectedValueOnce(new Error("network error"));
     render(<DashboardPage />);

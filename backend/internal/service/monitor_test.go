@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/uptime-app/backend/internal/model"
+	"github.com/uptime-app/backend/internal/repository"
 )
 
 type memoryMonitors struct{ monitors []model.Monitor }
@@ -34,6 +35,28 @@ func (m *memoryMonitors) ListByUserID(_ context.Context, userID uuid.UUID) ([]mo
 		}
 	}
 	return result, nil
+}
+
+func (m *memoryMonitors) UpdateByIDAndUserID(_ context.Context, monitor *model.Monitor) (model.Monitor, error) {
+	for index, existing := range m.monitors {
+		if existing.ID == monitor.ID && existing.UserID == monitor.UserID {
+			m.monitors[index].URL = monitor.URL
+			m.monitors[index].IntervalSeconds = monitor.IntervalSeconds
+			m.monitors[index].UpdatedAt = monitor.UpdatedAt
+			return m.monitors[index], nil
+		}
+	}
+	return model.Monitor{}, repository.ErrMonitorNotFound
+}
+
+func (m *memoryMonitors) DeleteByIDAndUserID(_ context.Context, monitorID, userID uuid.UUID) error {
+	for index, existing := range m.monitors {
+		if existing.ID == monitorID && existing.UserID == userID {
+			m.monitors = append(m.monitors[:index], m.monitors[index+1:]...)
+			return nil
+		}
+	}
+	return repository.ErrMonitorNotFound
 }
 
 type fakeTokenVerifier struct {
@@ -95,5 +118,41 @@ func TestMonitorRequiresValidAccessToken(t *testing.T) {
 	}
 	if _, err := svc.Create(context.Background(), "access", MonitorInput{URL: "https://example.com", IntervalSeconds: 60}); !errors.Is(err, ErrUnauthorized) {
 		t.Fatalf("create error = %v", err)
+	}
+	if _, err := svc.Update(context.Background(), "access", uuid.New(), MonitorInput{URL: "https://example.com", IntervalSeconds: 60}); !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("update error = %v", err)
+	}
+	if err := svc.Delete(context.Background(), "access", uuid.New()); !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("delete error = %v", err)
+	}
+}
+
+func TestUpdateMonitorValidatesAndScopesByUser(t *testing.T) {
+	userID := uuid.New()
+	monitor := model.Monitor{ID: uuid.New(), UserID: userID, URL: "https://example.com", IntervalSeconds: 60}
+	store := &memoryMonitors{monitors: []model.Monitor{monitor}}
+	svc := NewMonitorService(store, fakeTokenVerifier{userID: userID})
+	svc.now = func() time.Time { return time.Date(2026, 9, 17, 10, 0, 0, 0, time.UTC) }
+
+	updated, err := svc.Update(context.Background(), "access", monitor.ID, MonitorInput{URL: " https://updated.example.com ", IntervalSeconds: 300})
+	if err != nil || updated.URL != "https://updated.example.com" || updated.IntervalSeconds != 300 || !updated.UpdatedAt.Equal(svc.now()) {
+		t.Fatalf("updated monitor = %#v, err = %v", updated, err)
+	}
+	if _, err := svc.Update(context.Background(), "access", uuid.New(), MonitorInput{URL: "https://example.com", IntervalSeconds: 60}); !errors.Is(err, ErrMonitorNotFound) {
+		t.Fatalf("missing update error = %v", err)
+	}
+	for _, input := range []MonitorInput{
+		{URL: "example.com", IntervalSeconds: 60},
+		{URL: "https://example.com", IntervalSeconds: 4},
+	} {
+		if _, err := svc.Update(context.Background(), "access", monitor.ID, input); !errors.Is(err, ErrInvalidInput) {
+			t.Fatalf("invalid update input %#v: error = %v", input, err)
+		}
+	}
+	if err := svc.Delete(context.Background(), "access", monitor.ID); err != nil {
+		t.Fatalf("delete error = %v", err)
+	}
+	if len(store.monitors) != 0 {
+		t.Fatalf("monitors after delete = %#v", store.monitors)
 	}
 }

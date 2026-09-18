@@ -35,6 +35,16 @@ function formatInterval(seconds: number): string {
   return `Каждые ${seconds} сек.`;
 }
 
+function intervalFormValue(seconds: number): { value: string; unit: IntervalUnit } {
+  if (seconds % 3600 === 0) {
+    return { value: String(seconds / 3600), unit: "hours" };
+  }
+  if (seconds % 60 === 0) {
+    return { value: String(seconds / 60), unit: "minutes" };
+  }
+  return { value: String(seconds), unit: "seconds" };
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const { apiFetch, status, user, logout } = useAuth();
@@ -42,12 +52,16 @@ export default function DashboardPage() {
   const [monitors, setMonitors] = useState<Monitor[]>([]);
   const [isLoadingMonitors, setIsLoadingMonitors] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
+  const [monitorFormMode, setMonitorFormMode] = useState<"create" | "edit" | null>(null);
+  const [editingMonitorId, setEditingMonitorId] = useState<string | null>(null);
   const [url, setURL] = useState("");
   const [intervalValue, setIntervalValue] = useState("1");
   const [intervalUnit, setIntervalUnit] = useState<IntervalUnit>("minutes");
   const [createError, setCreateError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [deletingMonitorId, setDeletingMonitorId] = useState<string | null>(null);
+  const [pendingDeletionId, setPendingDeletionId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const monitorRequestVersion = useRef(0);
 
   useEffect(() => {
@@ -96,7 +110,28 @@ export default function DashboardPage() {
 
   const openCreateForm = () => {
     setCreateError(null);
-    setIsCreateFormOpen(true);
+    setEditingMonitorId(null);
+    setURL("");
+    setIntervalValue("1");
+    setIntervalUnit("minutes");
+    setMonitorFormMode("create");
+  };
+
+  const openEditForm = (monitor: Monitor) => {
+    const interval = intervalFormValue(monitor.intervalSeconds);
+    setCreateError(null);
+    setEditingMonitorId(monitor.id);
+    setURL(monitor.url);
+    setIntervalValue(interval.value);
+    setIntervalUnit(interval.unit);
+    setMonitorFormMode("edit");
+  };
+
+  const closeMonitorForm = () => {
+    if (isCreating) return;
+    setMonitorFormMode(null);
+    setEditingMonitorId(null);
+    setCreateError(null);
   };
 
   const handleCreate = async (event: FormEvent<HTMLFormElement>) => {
@@ -115,23 +150,41 @@ export default function DashboardPage() {
       return;
     }
 
+    const isEditing = monitorFormMode === "edit" && editingMonitorId !== null;
     setIsCreating(true);
     try {
-      const monitor = await apiFetch<Monitor>("/monitors", {
-        method: "POST",
+      const path = isEditing ? `/monitors/${editingMonitorId}` : "/monitors";
+      const monitor = await apiFetch<Monitor>(path, {
+        method: isEditing ? "PATCH" : "POST",
         body: JSON.stringify({ url: trimmedURL, intervalSeconds: interval }),
       });
       monitorRequestVersion.current += 1;
       setIsLoadingMonitors(false);
-      setMonitors((current) => [monitor, ...current]);
+      setMonitors((current) => isEditing ? current.map((item) => item.id === monitor.id ? monitor : item) : [monitor, ...current]);
       setURL("");
       setIntervalValue("1");
       setIntervalUnit("minutes");
-      setIsCreateFormOpen(false);
+      setMonitorFormMode(null);
+      setEditingMonitorId(null);
     } catch (error) {
-      setCreateError(error instanceof ApiError && error.status === 400 ? "Проверьте адрес сайта и интервал." : error instanceof ApiError && error.status === 422 ? "Достигнут лимит точек мониторинга для аккаунта." : "Не удалось создать точку мониторинга. Повторите попытку.");
+      setCreateError(error instanceof ApiError && error.status === 400 ? "Проверьте адрес сайта и интервал." : error instanceof ApiError && error.status === 404 ? "Сайт больше не найден. Обновите список и попробуйте снова." : error instanceof ApiError && error.status === 422 ? "Достигнут лимит точек мониторинга для аккаунта." : isEditing ? "Не удалось сохранить изменения. Повторите попытку." : "Не удалось создать точку мониторинга. Повторите попытку.");
     } finally {
       setIsCreating(false);
+    }
+  };
+
+  const handleDelete = async (monitorID: string) => {
+    setDeletingMonitorId(monitorID);
+    setDeleteError(null);
+    try {
+      await apiFetch<void>(`/monitors/${monitorID}`, { method: "DELETE" });
+      monitorRequestVersion.current += 1;
+      setMonitors((current) => current.filter((monitor) => monitor.id !== monitorID));
+      setPendingDeletionId(null);
+    } catch (error) {
+      setDeleteError(error instanceof ApiError && error.status === 404 ? "Сайт уже удалён или недоступен." : "Не удалось удалить сайт. Повторите попытку.");
+    } finally {
+      setDeletingMonitorId(null);
     }
   };
 
@@ -229,14 +282,14 @@ export default function DashboardPage() {
                   </button>
                 </div>
 
-                {isCreateFormOpen ? (
+                {monitorFormMode ? (
                   <section aria-labelledby="create-monitor-heading" className="mt-6 rounded-2xl border border-blue-100 bg-white p-6 shadow-sm sm:p-8">
                     <div className="flex items-start justify-between gap-4">
                       <div>
-                        <h3 className="text-lg font-semibold" id="create-monitor-heading">Новая точка мониторинга</h3>
+                        <h3 className="text-lg font-semibold" id="create-monitor-heading">{monitorFormMode === "edit" ? "Редактирование точки мониторинга" : "Новая точка мониторинга"}</h3>
                         <p className="mt-1 text-sm text-slate-600">Проверки ещё не запускаются — сейчас мы только сохраняем настройки.</p>
                       </div>
-                      <button aria-label="Закрыть форму" className="text-sm font-medium text-slate-500 hover:text-slate-900" onClick={() => setIsCreateFormOpen(false)} type="button">Закрыть</button>
+                      <button aria-label="Закрыть форму" className="text-sm font-medium text-slate-500 hover:text-slate-900" onClick={closeMonitorForm} type="button">Закрыть</button>
                     </div>
                     <form className="mt-6 grid gap-5 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-end" noValidate onSubmit={handleCreate}>
                       <label className="block text-sm font-medium text-slate-800" htmlFor="monitor-url">
@@ -257,7 +310,7 @@ export default function DashboardPage() {
                       </label>
                       {createError ? <p className="sm:col-span-3 text-sm text-red-700" role="alert">{createError}</p> : null}
                       <button className="justify-self-start rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-blue-400 sm:col-span-3" disabled={isCreating} type="submit">
-                        {isCreating ? "Создаём…" : "Создать"}
+                        {isCreating ? (monitorFormMode === "edit" ? "Сохраняем…" : "Создаём…") : (monitorFormMode === "edit" ? "Сохранить" : "Создать")}
                       </button>
                     </form>
                   </section>
@@ -280,8 +333,22 @@ export default function DashboardPage() {
                             <p className="truncate font-medium text-slate-900">{monitor.url}</p>
                             <p className="mt-1 text-sm text-slate-600">{formatInterval(monitor.intervalSeconds)}</p>
                           </div>
-                          <span className="w-fit rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">Ожидает запуска</span>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="w-fit rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">Ожидает запуска</span>
+                            <button className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60" disabled={deletingMonitorId !== null || isCreating} onClick={() => openEditForm(monitor)} type="button">Редактировать</button>
+                            <button className="rounded-lg border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60" disabled={deletingMonitorId !== null || isCreating} onClick={() => { setDeleteError(null); setPendingDeletionId(monitor.id); }} type="button">Удалить</button>
+                          </div>
                         </div>
+                        {pendingDeletionId === monitor.id ? (
+                          <div className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-900" role="alert">
+                            <p>Удалить этот сайт?</p>
+                            <div className="mt-3 flex gap-2">
+                              <button className="rounded-lg bg-red-600 px-3 py-1.5 font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60" disabled={deletingMonitorId === monitor.id} onClick={() => void handleDelete(monitor.id)} type="button">{deletingMonitorId === monitor.id ? "Удаляем…" : "Да, удалить"}</button>
+                              <button className="rounded-lg border border-red-200 px-3 py-1.5 font-medium text-red-700 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60" disabled={deletingMonitorId === monitor.id} onClick={() => setPendingDeletionId(null)} type="button">Отмена</button>
+                            </div>
+                          </div>
+                        ) : null}
+                        {deleteError && pendingDeletionId === monitor.id ? <p className="mt-3 text-sm text-red-700" role="alert">{deleteError}</p> : null}
                       </li>
                     ))}
                   </ul>

@@ -11,6 +11,8 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+var ErrMonitorNotFound = errors.New("monitor not found")
+
 type MonitorRepository struct{ db *gorm.DB }
 
 func NewMonitorRepository(db *gorm.DB) *MonitorRepository { return &MonitorRepository{db: db} }
@@ -50,4 +52,32 @@ func (r *MonitorRepository) ListByUserID(ctx context.Context, userID uuid.UUID) 
 		return nil, fmt.Errorf("list monitors: %w", err)
 	}
 	return monitors, nil
+}
+
+func (r *MonitorRepository) UpdateByIDAndUserID(ctx context.Context, monitor *model.Monitor) (model.Monitor, error) {
+	result := r.db.WithContext(ctx).Model(&model.Monitor{}).
+		Where("id = ? AND user_id = ?", monitor.ID, monitor.UserID).
+		Updates(map[string]any{"url": monitor.URL, "interval_seconds": monitor.IntervalSeconds, "updated_at": monitor.UpdatedAt})
+	if result.Error != nil {
+		return model.Monitor{}, fmt.Errorf("update monitor: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return model.Monitor{}, ErrMonitorNotFound
+	}
+	var updated model.Monitor
+	if err := r.db.WithContext(ctx).Where("id = ? AND user_id = ?", monitor.ID, monitor.UserID).Take(&updated).Error; err != nil {
+		return model.Monitor{}, fmt.Errorf("find updated monitor: %w", err)
+	}
+	return updated, nil
+}
+
+func (r *MonitorRepository) DeleteByIDAndUserID(ctx context.Context, monitorID, userID uuid.UUID) error {
+	result := r.db.WithContext(ctx).Where("id = ? AND user_id = ?", monitorID, userID).Delete(&model.Monitor{})
+	if result.Error != nil {
+		return fmt.Errorf("delete monitor: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return ErrMonitorNotFound
+	}
+	return nil
 }

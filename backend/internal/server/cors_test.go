@@ -56,8 +56,20 @@ func TestWithAPICORSAllowsMonitorPreflight(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, request)
 
-	if recorder.Code != http.StatusNoContent || recorder.Header().Get("Access-Control-Allow-Origin") != "http://localhost:3000" || recorder.Header().Get("Access-Control-Allow-Headers") != "Content-Type, Authorization" {
+	if recorder.Code != http.StatusNoContent || recorder.Header().Get("Access-Control-Allow-Origin") != "http://localhost:3000" || recorder.Header().Get("Access-Control-Allow-Headers") != "Content-Type, Authorization" || recorder.Header().Get("Access-Control-Allow-Methods") != "DELETE, GET, PATCH, POST, PUT" {
 		t.Fatalf("monitor preflight was not allowed: status=%d headers=%#v", recorder.Code, recorder.Header())
+	}
+}
+
+func TestWithAPICORSAllowsMonitorResourcePath(t *testing.T) {
+	handler := WithAPICORS(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }), "http://localhost:3000")
+	request := httptest.NewRequest(http.MethodDelete, "/monitors/monitor-id", nil)
+	request.Header.Set("Origin", "http://localhost:3000")
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Header().Get("Access-Control-Allow-Origin") != "http://localhost:3000" {
+		t.Fatal("monitor resource CORS origin header is missing")
 	}
 }
 
