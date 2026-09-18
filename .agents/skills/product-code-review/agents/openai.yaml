@@ -1,0 +1,4 @@
+interface:
+  display_name: "Product Code Review"
+  short_description: "Review Go and Next.js diffs by priority"
+  default_prompt: "Use $product-code-review to review the current diff and report prioritized findings."
