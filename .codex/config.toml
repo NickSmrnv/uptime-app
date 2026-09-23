@@ -1,0 +1,16 @@
+# Project-scoped MCP server configuration.
+[mcp_servers.postgres]
+command = "zsh"
+args = [
+  "-lc",
+  "set -a; source .env; set +a; exec docker run -i --rm -e DATABASE_URI=\"$DATABASE_URL\" crystaldba/postgres-mcp --access-mode=unrestricted",
+]
+cwd = "/Users/nicksmrnv/Documents/Projects/uptime-app"
+startup_timeout_sec = 30
+tool_timeout_sec = 120
+default_tools_approval_mode = "writes"
+
+
+[mcp_servers.playwright]
+command = "npx"
+args = ["@playwright/mcp@latest"]
