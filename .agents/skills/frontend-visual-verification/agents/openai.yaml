@@ -1,0 +1,4 @@
+interface:
+  display_name: "Frontend Visual Verification"
+  short_description: "Verify web UI changes with Playwright MCP"
+  default_prompt: "Use $frontend-visual-verification to verify the affected frontend routes and states with Playwright MCP after obtaining my confirmation."
