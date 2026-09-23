@@ -26,6 +26,17 @@
                     }
                 ]
             }
+        ],
+        "Stop": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "osascript -l JavaScript -e 'ObjC.import(\"Cocoa\"); var n=$.NSUserNotification.alloc.init; n.title=\"Codex\"; n.informativeText=\"Задача Codex завершена\"; $.NSUserNotificationCenter.defaultUserNotificationCenter.deliverNotification(n);'",
+                        "timeout": 3
+                    }
+                ]
+            }
         ]
     }
 }
