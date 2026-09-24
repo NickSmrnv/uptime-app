@@ -24,14 +24,14 @@ func TestMigratePostgreSQLAndRotateSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Exec("DROP TABLE IF EXISTS schema_migrations").Error; err != nil {
+	if err := db.Exec("DROP TABLE IF EXISTS monitor_minutes, schema_migrations").Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Migrator().DropTable(&model.Monitor{}, &model.RefreshSession{}, &model.User{}); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		_ = db.Exec("DROP TABLE IF EXISTS schema_migrations").Error
+		_ = db.Exec("DROP TABLE IF EXISTS monitor_minutes, schema_migrations").Error
 		_ = db.Migrator().DropTable(&model.Monitor{}, &model.RefreshSession{}, &model.User{})
 	})
 	if err := Migrate(context.Background(), db); err != nil {

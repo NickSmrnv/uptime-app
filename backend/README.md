@@ -55,3 +55,7 @@ make openapi
 ## File uploads
 
 `POST /uploads` accepts an authenticated `multipart/form-data` request with one `file` field up to 10 MB and returns its key and `/uploads/files/{filename}` URL. Files are stored locally under `uploads/files` and served as downloads. Profile avatars are a specialized JPEG/PNG upload flow stored in `uploads/avatars` and served inline.
+
+## Monitoring
+
+The API runs scheduled HTTP checks automatically after startup. Optional `MONITOR_CONCURRENCY` controls concurrent checks (default `20`). See [monitoring operations and validation](../docs/guides/site-monitoring.md).

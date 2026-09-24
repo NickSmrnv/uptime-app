@@ -25,6 +25,7 @@ const (
 )
 
 type MonitorStore interface {
+	ReadBuckets(context.Context, repository.StatsQuery) (int64, []model.MonitorBucket, error)
 	CreateIfBelowLimit(context.Context, *model.Monitor, int) (bool, error)
 	ListByUserID(context.Context, uuid.UUID) ([]model.Monitor, error)
 	UpdateByIDAndUserID(context.Context, *model.Monitor) (model.Monitor, error)

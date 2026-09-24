@@ -9,19 +9,20 @@ import (
 )
 
 type Config struct {
-	Address           string
-	DatabaseURL       string
-	JWTSecret         []byte
-	JWTIssuer         string
-	AccessTokenTTL    time.Duration
-	RefreshTokenTTL   time.Duration
-	CookieSecure      bool
-	AppEnvironment    string
-	CORSAllowedOrigin string
-	UploadStorageDir  string
-	DBMaxOpenConns    int
-	DBMaxIdleConns    int
-	DBConnMaxLife     time.Duration
+	MonitorConcurrency int
+	Address            string
+	DatabaseURL        string
+	JWTSecret          []byte
+	JWTIssuer          string
+	AccessTokenTTL     time.Duration
+	RefreshTokenTTL    time.Duration
+	CookieSecure       bool
+	AppEnvironment     string
+	CORSAllowedOrigin  string
+	UploadStorageDir   string
+	DBMaxOpenConns     int
+	DBMaxIdleConns     int
+	DBConnMaxLife      time.Duration
 }
 
 // Load rejects unsafe or unusable environment combinations before the application opens resources.
@@ -50,7 +51,14 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	cfg := Config{Address: stringEnv("HTTP_ADDR", ":8080"), DatabaseURL: strings.TrimSpace(os.Getenv("DATABASE_URL")), JWTSecret: []byte(strings.TrimSpace(os.Getenv("JWT_SECRET"))), JWTIssuer: stringEnv("JWT_ISSUER", "uptime-api"), AccessTokenTTL: accessTTL, RefreshTokenTTL: refreshTTL, CookieSecure: cookieSecure, AppEnvironment: stringEnv("APP_ENV", "development"), CORSAllowedOrigin: stringEnv("CORS_ALLOWED_ORIGIN", "http://localhost:3000"), UploadStorageDir: stringEnv("UPLOAD_STORAGE_DIR", "uploads"), DBMaxOpenConns: maxOpen, DBMaxIdleConns: maxIdle, DBConnMaxLife: connMaxLife}
+	monitorConcurrency, err := intEnv("MONITOR_CONCURRENCY", 20)
+	if err != nil {
+		return Config{}, err
+	}
+	if monitorConcurrency < 1 || monitorConcurrency > 1000 {
+		return Config{}, fmt.Errorf("MONITOR_CONCURRENCY must be between 1 and 1000")
+	}
+	cfg := Config{MonitorConcurrency: monitorConcurrency, Address: stringEnv("HTTP_ADDR", ":8080"), DatabaseURL: strings.TrimSpace(os.Getenv("DATABASE_URL")), JWTSecret: []byte(strings.TrimSpace(os.Getenv("JWT_SECRET"))), JWTIssuer: stringEnv("JWT_ISSUER", "uptime-api"), AccessTokenTTL: accessTTL, RefreshTokenTTL: refreshTTL, CookieSecure: cookieSecure, AppEnvironment: stringEnv("APP_ENV", "development"), CORSAllowedOrigin: stringEnv("CORS_ALLOWED_ORIGIN", "http://localhost:3000"), UploadStorageDir: stringEnv("UPLOAD_STORAGE_DIR", "uploads"), DBMaxOpenConns: maxOpen, DBMaxIdleConns: maxIdle, DBConnMaxLife: connMaxLife}
 	if cfg.DatabaseURL == "" {
 		return Config{}, fmt.Errorf("DATABASE_URL is required")
 	}

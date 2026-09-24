@@ -11,7 +11,19 @@ import (
 	"github.com/uptime-app/backend/internal/repository"
 )
 
-type memoryMonitors struct{ monitors []model.Monitor }
+type memoryMonitors struct {
+	monitors []model.Monitor
+	minutes  []model.MonitorBucket
+}
+
+func (m *memoryMonitors) ReadBuckets(_ context.Context, q repository.StatsQuery) (int64, []model.MonitorBucket, error) {
+	for _, monitor := range m.monitors {
+		if monitor.ID == q.MonitorID && monitor.UserID == q.UserID {
+			return monitor.HistoryVersion, m.minutes, nil
+		}
+	}
+	return 0, nil, repository.ErrMonitorNotFound
+}
 
 func (m *memoryMonitors) CreateIfBelowLimit(_ context.Context, monitor *model.Monitor, limit int) (bool, error) {
 	count := 0

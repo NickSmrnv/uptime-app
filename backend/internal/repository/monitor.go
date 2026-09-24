@@ -55,18 +55,22 @@ func (r *MonitorRepository) ListByUserID(ctx context.Context, userID uuid.UUID) 
 }
 
 func (r *MonitorRepository) UpdateByIDAndUserID(ctx context.Context, monitor *model.Monitor) (model.Monitor, error) {
-	result := r.db.WithContext(ctx).Model(&model.Monitor{}).
-		Where("id = ? AND user_id = ?", monitor.ID, monitor.UserID).
-		Updates(map[string]any{"url": monitor.URL, "interval_seconds": monitor.IntervalSeconds, "updated_at": monitor.UpdatedAt})
+	var updated model.Monitor
+	result := r.db.WithContext(ctx).Raw(`
+        UPDATE monitors SET
+            history_version = history_version + CASE WHEN url <> ? THEN 1 ELSE 0 END,
+            config_version = config_version + 1,
+            url = ?, interval_seconds = ?, updated_at = ?, next_check_at = now(),
+            attempt_id = NULL, lease_until = NULL, last_checked_at = NULL,
+            last_status_code = NULL, last_error = '', last_duration_ms = NULL
+        WHERE id = ? AND user_id = ? RETURNING *`,
+		monitor.URL, monitor.URL, monitor.IntervalSeconds, monitor.UpdatedAt, monitor.ID, monitor.UserID,
+	).Scan(&updated)
 	if result.Error != nil {
 		return model.Monitor{}, fmt.Errorf("update monitor: %w", result.Error)
 	}
 	if result.RowsAffected == 0 {
 		return model.Monitor{}, ErrMonitorNotFound
-	}
-	var updated model.Monitor
-	if err := r.db.WithContext(ctx).Where("id = ? AND user_id = ?", monitor.ID, monitor.UserID).Take(&updated).Error; err != nil {
-		return model.Monitor{}, fmt.Errorf("find updated monitor: %w", err)
 	}
 	return updated, nil
 }

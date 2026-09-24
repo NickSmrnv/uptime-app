@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "../../auth/AuthProvider";
 import { ApiError, avatarSource, type Monitor } from "../../lib/api";
 
+import MonitorHistory, { MonitorStatus } from "./MonitorHistory";
+
 const navigationItems = [
   { label: "Обзор", current: true, href: "/dashboard", unavailable: false },
   { label: "Профиль", current: false, href: "/profile", unavailable: false },
@@ -74,26 +76,34 @@ export default function DashboardPage() {
     if (status !== "authenticated") {
       return;
     }
-    const requestVersion = ++monitorRequestVersion.current;
     let isActive = true;
-    void apiFetch<Monitor[]>("/monitors")
-      .then((loadedMonitors) => {
+    let inFlight = false;
+    const refresh = async () => {
+      if (document.hidden || inFlight) return;
+      inFlight = true;
+      const requestVersion = ++monitorRequestVersion.current;
+      try {
+        const loadedMonitors = await apiFetch<Monitor[]>("/monitors");
         if (!isActive || requestVersion !== monitorRequestVersion.current) return;
         setMonitors(loadedMonitors);
         setLoadError(null);
-      })
-      .catch(() => {
+      } catch {
         if (isActive && requestVersion === monitorRequestVersion.current) {
           setLoadError("Не удалось загрузить точки мониторинга. Обновите страницу и попробуйте снова.");
         }
-      })
-      .finally(() => {
-        if (isActive && requestVersion === monitorRequestVersion.current) {
-          setIsLoadingMonitors(false);
-        }
-      });
+      } finally {
+        inFlight = false;
+        if (isActive && requestVersion === monitorRequestVersion.current) setIsLoadingMonitors(false);
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 5_000);
+    const onVisibility = () => { if (!document.hidden) void refresh(); };
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       isActive = false;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [apiFetch, status]);
 
@@ -269,13 +279,13 @@ export default function DashboardPage() {
             <div className="mx-auto max-w-5xl">
               <p className="text-sm font-medium text-blue-700">Рабочее пространство</p>
               <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">Добро пожаловать, {user.email.split("@")[0]}</h1>
-              <p className="mt-3 max-w-2xl text-slate-600">Здесь будут отображаться ваши проверки доступности и состояние сервисов.</p>
+              <p className="mt-3 max-w-2xl text-slate-600">Проверки доступности, состояние сервисов и история за последние 30 дней.</p>
 
               <section className="mt-8" id="monitors" aria-labelledby="monitors-heading">
                 <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-center">
                   <div>
                     <h2 className="text-xl font-semibold" id="monitors-heading">Точки мониторинга</h2>
-                    <p className="mt-1 text-sm text-slate-600">Создайте адрес и задайте будущую периодичность проверки.</p>
+                    <p className="mt-1 text-sm text-slate-600">Добавьте сайт — проверки начнутся автоматически с заданным интервалом.</p>
                   </div>
                   <button className="rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700" onClick={openCreateForm} type="button">
                     Добавить сайт
@@ -287,7 +297,7 @@ export default function DashboardPage() {
                     <div className="flex items-start justify-between gap-4">
                       <div>
                         <h3 className="text-lg font-semibold" id="create-monitor-heading">{monitorFormMode === "edit" ? "Редактирование точки мониторинга" : "Новая точка мониторинга"}</h3>
-                        <p className="mt-1 text-sm text-slate-600">Проверки ещё не запускаются — сейчас мы только сохраняем настройки.</p>
+                        <p className="mt-1 text-sm text-slate-600">После сохранения сразу начнётся новая проверка. Успешным считается ответ HTTP 200.</p>
                       </div>
                       <button aria-label="Закрыть форму" className="text-sm font-medium text-slate-500 hover:text-slate-900" onClick={closeMonitorForm} type="button">Закрыть</button>
                     </div>
@@ -321,7 +331,7 @@ export default function DashboardPage() {
                 {!isLoadingMonitors && !loadError && monitors.length === 0 ? (
                   <div className="mt-8 rounded-2xl border border-dashed border-slate-300 bg-white p-6 sm:p-8">
                     <h3 className="text-lg font-semibold">Мониторов пока нет</h3>
-                    <p className="mt-1 text-sm text-slate-600">Добавьте первый адрес, чтобы сохранить будущую проверку доступности.</p>
+                    <p className="mt-1 text-sm text-slate-600">Добавьте первый адрес, чтобы запустить проверки доступности.</p>
                   </div>
                 ) : null}
                 {monitors.length > 0 ? (
@@ -334,11 +344,12 @@ export default function DashboardPage() {
                             <p className="mt-1 text-sm text-slate-600">{formatInterval(monitor.intervalSeconds)}</p>
                           </div>
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="w-fit rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">Ожидает запуска</span>
+                            <MonitorStatus monitor={monitor} />
                             <button className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60" disabled={deletingMonitorId !== null || isCreating} onClick={() => openEditForm(monitor)} type="button">Редактировать</button>
                             <button className="rounded-lg border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60" disabled={deletingMonitorId !== null || isCreating} onClick={() => { setDeleteError(null); setPendingDeletionId(monitor.id); }} type="button">Удалить</button>
                           </div>
                         </div>
+                        <MonitorHistory monitor={monitor} />
                         {pendingDeletionId === monitor.id ? (
                           <div className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-900" role="alert">
                             <p>Удалить этот сайт?</p>

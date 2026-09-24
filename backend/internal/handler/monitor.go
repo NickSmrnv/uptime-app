@@ -14,6 +14,7 @@ import (
 )
 
 type MonitorService interface {
+	Stats(context.Context, string, uuid.UUID, string) (model.MonitorStats, error)
 	Create(context.Context, string, service.MonitorInput) (model.Monitor, error)
 	List(context.Context, string) ([]model.Monitor, error)
 	Update(context.Context, string, uuid.UUID, service.MonitorInput) (model.Monitor, error)
@@ -27,6 +28,7 @@ func NewMonitorHandler(monitors MonitorService) *MonitorHandler {
 }
 
 func (h *MonitorHandler) RegisterRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /monitors/{id}/stats", h.stats)
 	mux.HandleFunc("GET /monitors", h.list)
 	mux.HandleFunc("POST /monitors", h.create)
 	mux.HandleFunc("PATCH /monitors/{id}", h.update)
@@ -41,10 +43,18 @@ type CreateMonitorRequest struct {
 type UpdateMonitorRequest = CreateMonitorRequest
 
 type MonitorResponse struct {
-	ID              string    `json:"id"`
-	URL             string    `json:"url"`
-	IntervalSeconds int       `json:"intervalSeconds"`
-	CreatedAt       time.Time `json:"createdAt"`
+	Status          string     `json:"status" enums:"pending,up,down,stale"`
+	ConfigVersion   int64      `json:"configVersion"`
+	HistoryVersion  int64      `json:"historyVersion"`
+	NextCheckAt     time.Time  `json:"nextCheckAt"`
+	LastCheckedAt   *time.Time `json:"lastCheckedAt"`
+	LastStatusCode  *int       `json:"lastStatusCode"`
+	LastError       string     `json:"lastError"`
+	LastDurationMS  *int64     `json:"lastDurationMs"`
+	ID              string     `json:"id"`
+	URL             string     `json:"url"`
+	IntervalSeconds int        `json:"intervalSeconds"`
+	CreatedAt       time.Time  `json:"createdAt"`
 }
 
 // list returns all monitors owned by the authenticated user.
@@ -181,5 +191,10 @@ func (h *MonitorHandler) writeMonitorError(w http.ResponseWriter, err error) boo
 }
 
 func monitorFrom(monitor model.Monitor) MonitorResponse {
-	return MonitorResponse{ID: monitor.ID.String(), URL: monitor.URL, IntervalSeconds: monitor.IntervalSeconds, CreatedAt: monitor.CreatedAt}
+	return MonitorResponse{
+		Status:        service.MonitorStatus(monitor, time.Now().UTC()),
+		ConfigVersion: monitor.ConfigVersion, HistoryVersion: monitor.HistoryVersion,
+		NextCheckAt: monitor.NextCheckAt, LastCheckedAt: monitor.LastCheckedAt,
+		LastStatusCode: monitor.LastStatusCode, LastError: monitor.LastError, LastDurationMS: monitor.LastDurationMS,
+		ID: monitor.ID.String(), URL: monitor.URL, IntervalSeconds: monitor.IntervalSeconds, CreatedAt: monitor.CreatedAt}
 }

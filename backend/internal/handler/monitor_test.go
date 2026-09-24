@@ -147,3 +147,40 @@ func TestMonitorRoutesRejectInvalidIDAndNotFound(t *testing.T) {
 		t.Fatalf("not found delete status = %d", recorder.Code)
 	}
 }
+
+func (f *fakeMonitors) Stats(_ context.Context, access string, id uuid.UUID, period string) (model.MonitorStats, error) {
+	f.access, f.monitorID = access, id
+	return model.MonitorStats{Period: period, Buckets: []model.MonitorBucket{}}, f.err
+}
+
+func TestMonitorStatsRoute(t *testing.T) {
+	id := uuid.New()
+	monitors := &fakeMonitors{}
+	mux := http.NewServeMux()
+	NewMonitorHandler(monitors).RegisterRoutes(mux)
+	request := httptest.NewRequest(http.MethodGet, "/monitors/"+id.String()+"/stats?period=7d", nil)
+	request.Header.Set("Authorization", "Bearer owner")
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, request)
+	if response.Code != 200 || monitors.access != "owner" || monitors.monitorID != id {
+		t.Fatalf("stats: %d %s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), `"period":"7d"`) {
+		t.Fatal("period lost")
+	}
+	for _, test := range []struct {
+		err    error
+		status int
+	}{
+		{err: service.ErrMonitorNotFound, status: 404},
+		{err: service.ErrUnauthorized, status: 401},
+		{err: service.ErrInvalidInput, status: 400},
+	} {
+		monitors.err = test.err
+		response = httptest.NewRecorder()
+		mux.ServeHTTP(response, request)
+		if response.Code != test.status {
+			t.Fatalf("stats error: %d", response.Code)
+		}
+	}
+}
