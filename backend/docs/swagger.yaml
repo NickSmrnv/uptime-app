@@ -36,12 +36,33 @@ definitions:
     type: object
   handler.MonitorResponse:
     properties:
+      configVersion:
+        type: integer
       createdAt:
         type: string
+      historyVersion:
+        type: integer
       id:
         type: string
       intervalSeconds:
         type: integer
+      lastCheckedAt:
+        type: string
+      lastDurationMs:
+        type: integer
+      lastError:
+        type: string
+      lastStatusCode:
+        type: integer
+      nextCheckAt:
+        type: string
+      status:
+        enum:
+        - pending
+        - up
+        - down
+        - stale
+        type: string
       url:
         type: string
     type: object
@@ -69,6 +90,44 @@ definitions:
       id:
         type: string
       name:
+        type: string
+    type: object
+  model.MonitorBucket:
+    properties:
+      failurePercent:
+        type: number
+      failures:
+        type: integer
+      start:
+        type: string
+      successPercent:
+        type: number
+      successes:
+        type: integer
+    type: object
+  model.MonitorStats:
+    properties:
+      bucketSeconds:
+        type: integer
+      buckets:
+        items:
+          $ref: '#/definitions/model.MonitorBucket'
+        type: array
+      failurePercent:
+        type: number
+      failures:
+        type: integer
+      from:
+        type: string
+      historyVersion:
+        type: integer
+      period:
+        type: string
+      successPercent:
+        type: number
+      successes:
+        type: integer
+      to:
         type: string
     type: object
   service.UploadedFile:
@@ -329,6 +388,52 @@ paths:
       security:
       - BearerAuth: []
       summary: Update a monitor
+      tags:
+      - monitors
+  /monitors/{id}/stats:
+    get:
+      parameters:
+      - description: Monitor UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: History period
+        enum:
+        - 1h
+        - 24h
+        - 7d
+        - 30d
+        in: query
+        name: period
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.MonitorStats'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get monitor availability history for the current URL
       tags:
       - monitors
   /uploads:

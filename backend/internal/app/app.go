@@ -8,6 +8,7 @@ import (
 	"github.com/swaggo/http-swagger"
 	"github.com/uptime-app/backend/internal/config"
 	"github.com/uptime-app/backend/internal/handler"
+	"github.com/uptime-app/backend/internal/monitoring"
 	"github.com/uptime-app/backend/internal/repository"
 	"github.com/uptime-app/backend/internal/server"
 	"github.com/uptime-app/backend/internal/service"
@@ -38,9 +39,21 @@ func New(ctx context.Context, cfg config.Config) (Application, error) {
 	auth := service.NewAuthenticationService(repository.NewUserRepository(db), repository.NewSessionRepository(db), uploads, service.AuthConfig{JWTSecret: cfg.JWTSecret, JWTIssuer: cfg.JWTIssuer, AccessTokenTTL: cfg.AccessTokenTTL, RefreshTokenTTL: cfg.RefreshTokenTTL})
 	mux := http.NewServeMux()
 	handler.NewAuthHandler(auth, handler.CookieConfig{Secure: cfg.CookieSecure, RefreshTokenTTL: cfg.RefreshTokenTTL}).RegisterRoutes(mux)
-	handler.NewMonitorHandler(service.NewMonitorService(repository.NewMonitorRepository(db), auth)).RegisterRoutes(mux)
+	monitors := repository.NewMonitorRepository(db)
+	handler.NewMonitorHandler(service.NewMonitorService(monitors, auth)).RegisterRoutes(mux)
 	handler.NewUploadHandler(auth, service.NewUploadService(uploads)).RegisterRoutes(mux)
 	mux.Handle("GET /uploads/{path...}", uploads)
 	mux.Handle("GET /swagger/", httpSwagger.Handler(httpSwagger.URL("/swagger/doc.json")))
-	return Application{Handler: server.WithAPICORS(mux, cfg.CORSAllowedOrigin), Close: closeDB}, nil
+	workerCtx, cancelWorker := context.WithCancel(ctx)
+	workerDone := make(chan struct{})
+	go func() {
+		defer close(workerDone)
+		monitoring.NewRunner(monitors, monitoring.NewChecker(), cfg.MonitorConcurrency).Run(workerCtx)
+	}()
+	closeApplication := func() error {
+		cancelWorker()
+		<-workerDone
+		return closeDB()
+	}
+	return Application{Handler: server.WithAPICORS(mux, cfg.CORSAllowedOrigin), Close: closeApplication}, nil
 }

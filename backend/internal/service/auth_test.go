@@ -109,7 +109,9 @@ func newTestService() (*AuthenticationService, *memoryUsers, *memorySessions, *m
 	sessions := &memorySessions{byHash: map[string]model.RefreshSession{}}
 	avatars := &memoryAvatars{}
 	svc := NewAuthenticationService(users, sessions, avatars, AuthConfig{JWTSecret: []byte("01234567890123456789012345678901"), JWTIssuer: "test", AccessTokenTTL: 24 * time.Hour, RefreshTokenTTL: 30 * 24 * time.Hour})
-	svc.now = func() time.Time { return time.Date(2026, 9, 16, 12, 0, 0, 0, time.UTC) }
+	// JWT verification uses the real clock; keep the fixture stable within a test, not tied to a past date.
+	now := time.Now().UTC().Truncate(time.Second)
+	svc.now = func() time.Time { return now }
 	return svc, users, sessions, avatars
 }
 

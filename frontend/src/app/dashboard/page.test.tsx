@@ -3,6 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import DashboardPage from "./page";
 import { ApiError, type Monitor, type User } from "../../lib/api";
 
+vi.mock("./MonitorHistory", () => ({ default: () => null, MonitorStatus: () => null }));
+
+const monitorState = {
+  status: "pending" as const, configVersion: 1, historyVersion: 1,
+  nextCheckAt: "2026-09-23T10:00:00Z", lastCheckedAt: null,
+  lastStatusCode: null, lastError: "", lastDurationMs: null,
+};
 const replace = vi.fn();
 const logout = vi.fn();
 const apiFetch = vi.fn();
@@ -86,7 +93,7 @@ describe("DashboardPage", () => {
   });
 
   it("edits a monitor and updates the card", async () => {
-    const existing: Monitor = { id: "monitor-1", url: "https://example.com", intervalSeconds: 300, createdAt: "2026-09-17T10:00:00Z" };
+    const existing: Monitor = { ...monitorState, id: "monitor-1", url: "https://example.com", intervalSeconds: 300, createdAt: "2026-09-17T10:00:00Z" };
     const updated: Monitor = { ...existing, url: "https://updated.example.com", intervalSeconds: 600 };
     apiFetch.mockResolvedValueOnce([existing]).mockResolvedValueOnce(updated);
     render(<DashboardPage />);
@@ -103,7 +110,7 @@ describe("DashboardPage", () => {
   });
 
   it("confirms and deletes a monitor", async () => {
-    const existing: Monitor = { id: "monitor-1", url: "https://example.com", intervalSeconds: 300, createdAt: "2026-09-17T10:00:00Z" };
+    const existing: Monitor = { ...monitorState, id: "monitor-1", url: "https://example.com", intervalSeconds: 300, createdAt: "2026-09-17T10:00:00Z" };
     apiFetch.mockResolvedValueOnce([existing]).mockResolvedValueOnce(undefined);
     render(<DashboardPage />);
 

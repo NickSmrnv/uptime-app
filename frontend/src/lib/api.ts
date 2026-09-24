@@ -24,6 +24,37 @@ export type Monitor = {
   url: string;
   intervalSeconds: number;
   createdAt: string;
+  status: "pending" | "up" | "down" | "stale";
+  configVersion: number;
+  historyVersion: number;
+  nextCheckAt: string;
+  lastCheckedAt: string | null;
+  lastStatusCode: number | null;
+  lastError: string;
+  lastDurationMs: number | null;
+};
+
+export type MonitorPeriod = "1h" | "24h" | "7d" | "30d";
+
+export type MonitorBucket = {
+  start: string;
+  successes: number;
+  failures: number;
+  successPercent: number | null;
+  failurePercent: number | null;
+};
+
+export type MonitorStats = {
+  period: MonitorPeriod;
+  from: string;
+  to: string;
+  bucketSeconds: number;
+  historyVersion: number;
+  successes: number;
+  failures: number;
+  successPercent: number | null;
+  failurePercent: number | null;
+  buckets: MonitorBucket[];
 };
 
 export class ApiError extends Error {

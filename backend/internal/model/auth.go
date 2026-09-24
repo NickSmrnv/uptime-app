@@ -28,6 +28,15 @@ type RefreshSession struct {
 }
 
 type Monitor struct {
+	ConfigVersion   int64     `gorm:"default:1"`
+	HistoryVersion  int64     `gorm:"default:1"`
+	NextCheckAt     time.Time `gorm:"default:now()"`
+	LeaseUntil      *time.Time
+	AttemptID       *uuid.UUID `gorm:"type:uuid"`
+	LastCheckedAt   *time.Time
+	LastStatusCode  *int
+	LastError       string
+	LastDurationMS  *int64
 	ID              uuid.UUID `gorm:"type:uuid;primaryKey"`
 	UserID          uuid.UUID `gorm:"type:uuid;not null;index:idx_monitors_user_created,priority:1"`
 	User            User      `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;foreignKey:UserID"`

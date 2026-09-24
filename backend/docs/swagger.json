@@ -396,6 +396,76 @@
                 }
             }
         },
+        "/monitors/{id}/stats": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "monitors"
+                ],
+                "summary": "Get monitor availability history for the current URL",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Monitor UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "1h",
+                            "24h",
+                            "7d",
+                            "30d"
+                        ],
+                        "type": "string",
+                        "description": "History period",
+                        "name": "period",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.MonitorStats"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/uploads": {
             "post": {
                 "security": [
@@ -696,14 +766,44 @@
         "handler.MonitorResponse": {
             "type": "object",
             "properties": {
+                "configVersion": {
+                    "type": "integer"
+                },
                 "createdAt": {
                     "type": "string"
+                },
+                "historyVersion": {
+                    "type": "integer"
                 },
                 "id": {
                     "type": "string"
                 },
                 "intervalSeconds": {
                     "type": "integer"
+                },
+                "lastCheckedAt": {
+                    "type": "string"
+                },
+                "lastDurationMs": {
+                    "type": "integer"
+                },
+                "lastError": {
+                    "type": "string"
+                },
+                "lastStatusCode": {
+                    "type": "integer"
+                },
+                "nextCheckAt": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "pending",
+                        "up",
+                        "down",
+                        "stale"
+                    ]
                 },
                 "url": {
                     "type": "string"
@@ -745,6 +845,64 @@
                     "type": "string"
                 },
                 "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.MonitorBucket": {
+            "type": "object",
+            "properties": {
+                "failurePercent": {
+                    "type": "number"
+                },
+                "failures": {
+                    "type": "integer"
+                },
+                "start": {
+                    "type": "string"
+                },
+                "successPercent": {
+                    "type": "number"
+                },
+                "successes": {
+                    "type": "integer"
+                }
+            }
+        },
+        "model.MonitorStats": {
+            "type": "object",
+            "properties": {
+                "bucketSeconds": {
+                    "type": "integer"
+                },
+                "buckets": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.MonitorBucket"
+                    }
+                },
+                "failurePercent": {
+                    "type": "number"
+                },
+                "failures": {
+                    "type": "integer"
+                },
+                "from": {
+                    "type": "string"
+                },
+                "historyVersion": {
+                    "type": "integer"
+                },
+                "period": {
+                    "type": "string"
+                },
+                "successPercent": {
+                    "type": "number"
+                },
+                "successes": {
+                    "type": "integer"
+                },
+                "to": {
                     "type": "string"
                 }
             }
